@@ -5,11 +5,7 @@
 // Generated with jaspr_builder
 
 import 'package:jaspr/server.dart';
-import 'package:em_calendly_example/components/counter.dart' as _counter;
-import 'package:em_calendly_example/components/header.dart' as _header;
-import 'package:em_calendly_example/constants/theme.dart' as _theme;
-import 'package:em_calendly_example/pages/about.dart' as _about;
-import 'package:em_calendly_example/app.dart' as _app;
+import 'package:em_calendly_example/ui/local_time.dart' as _local_time;
 
 /// Default [ServerOptions] for use with your Jaspr project.
 ///
@@ -29,12 +25,15 @@ import 'package:em_calendly_example/app.dart' as _app;
 /// ```
 ServerOptions get defaultServerOptions => ServerOptions(
   clientId: 'main.client.dart.js',
-  clients: {_app.App: ClientTarget<_app.App>('app')},
-  styles: () => [
-    ..._theme.styles,
-    ..._app.AppState.styles,
-    ..._counter.CounterState.styles,
-    ..._header.Header.styles,
-    ..._about.About.styles,
-  ],
+  clients: {
+    _local_time.LocalTime: ClientTarget<_local_time.LocalTime>(
+      'local_time',
+      params: __local_timeLocalTime,
+    ),
+  },
 );
+
+Map<String, Object?> __local_timeLocalTime(_local_time.LocalTime c) => {
+  'iso': c.iso,
+  'timeOnly': c.timeOnly,
+};

@@ -1,0 +1,3 @@
+tags:
+  db:
+    description: Needs the local Supabase database (make db-up).

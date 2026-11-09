@@ -1,50 +1,50 @@
-/// The entrypoint for the **server** environment.
-///
-/// The [main] method will only be executed on the server during pre-rendering.
-/// To run code on the client, check the `main.client.dart` file.
+/// The entrypoint of the server.
 library;
 
-import 'package:jaspr/dom.dart';
-// Server-specific Jaspr import.
+import 'dart:async';
+import 'dart:io';
+
 import 'package:jaspr/server.dart';
+import 'package:logging/logging.dart';
+import 'package:shelf/shelf_io.dart' as shelf_io;
 
-// Imports the [App] component.
-import 'app.dart';
-
-// This file is generated automatically by Jaspr, do not remove or edit.
+import 'composition/application.dart';
+import 'composition/bootstrap.dart';
 import 'main.server.options.dart';
 
-void main() {
-  // Initializes the server environment with the generated default options.
-  Jaspr.initializeApp(
-    options: defaultServerOptions,
-  );
+// `jaspr serve` runs main again after a hot reload; the previous instance is stopped first.
+HttpServer? _server;
+Application? _app;
+StreamSubscription<LogRecord>? _logs;
 
-  // Starts the app.
-  //
-  // [Document] renders the root document structure (<html>, <head> and <body>)
-  // with the provided parameters and components.
-  runApp(
-    Document(
-      title: 'em_calendly_example',
-      styles: [
-        // Special import rule to include to another css file.
-        css.import('https://fonts.googleapis.com/css?family=Roboto'),
-        // Each style rule takes a valid css selector and a set of styles.
-        // Styles are defined using type-safe css bindings and can be freely chained and nested.
-        css('html, body').styles(
-          width: 100.percent,
-          minHeight: 100.vh,
-          padding: .zero,
-          margin: .zero,
-          fontFamily: const .list([FontFamily('Roboto'), FontFamilies.sansSerif]),
-        ),
-        css('h1').styles(
-          margin: .unset,
-          fontSize: 4.rem,
-        ),
-      ],
-      body: App(),
-    ),
-  );
+Future<void> main() async {
+  await _server?.close(force: true);
+  await _app?.stop();
+  await _logs?.cancel();
+
+  Logger.root.level = Level.INFO;
+  _logs = Logger.root.onRecord.listen((r) {
+    stdout.writeln('${r.time.toIso8601String()} ${r.level.name} ${r.loggerName}: ${r.message}');
+    if (r.error != null) stdout.writeln('  ${r.error}');
+    if (r.stackTrace != null && r.level >= Level.SEVERE) stdout.writeln(r.stackTrace);
+  });
+
+  Jaspr.initializeApp(options: defaultServerOptions);
+
+  final app = _app = bootstrap(Environment.fromPlatform());
+  await app.start();
+
+  // jaspr's handler tries static files first, and that consumes a request body. Form posts skip it.
+  final pages = serveApp((request, render) => app.handle(request, render));
+  Future<Response> handler(Request request) async {
+    if (request.method == 'GET' || request.method == 'HEAD') return pages(request);
+    return app.handle(request, (document) async {
+      final rendered = await renderComponent(document, request: request);
+      return Response(rendered.statusCode, body: rendered.body, headers: rendered.headers);
+    });
+  }
+
+  final port = int.parse(Platform.environment['PORT'] ?? '8080');
+  final server = _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port, shared: true);
+  Logger('server').info('Serving at http://localhost:${server.port}');
 }

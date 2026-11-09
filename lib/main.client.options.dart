@@ -6,7 +6,7 @@
 
 import 'package:jaspr/client.dart';
 
-import 'package:em_calendly_example/app.dart' deferred as _app;
+import 'package:em_calendly_example/ui/local_time.dart' deferred as _local_time;
 
 /// Default [ClientOptions] for use with your Jaspr project.
 ///
@@ -25,5 +25,13 @@ import 'package:em_calendly_example/app.dart' deferred as _app;
 /// }
 /// ```
 ClientOptions get defaultClientOptions => ClientOptions(
-  clients: {'app': ClientLoader((p) => _app.App(), loader: _app.loadLibrary)},
+  clients: {
+    'local_time': ClientLoader(
+      (p) => _local_time.LocalTime(
+        iso: p['iso'] as String,
+        timeOnly: p['timeOnly'] as bool,
+      ),
+      loader: _local_time.loadLibrary,
+    ),
+  },
 );
