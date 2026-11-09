@@ -9,6 +9,8 @@ board {
     workflow.create_availability_schedule,
     workflow.set_weekly_hours,
     workflow.add_date_exception,
+    workflow.change_date_exception,
+    workflow.remove_date_exception,
     workflow.set_booking_limits,
     workflow.view_availability_schedules,
     workflow.create_meeting_type,
@@ -19,6 +21,8 @@ board {
     workflow.delete_meeting_type,
     workflow.view_available_slots,
     workflow.reserve_meeting_slot,
+    workflow.request_booking_availability_check,
+    workflow.verify_booked_slot,
     workflow.request_calendar_event,
     workflow.confirm_booked_meeting,
     workflow.fail_booking,
@@ -28,14 +32,18 @@ board {
     workflow.view_my_booked_meetings,
     workflow.view_meeting_details,
     workflow.request_meeting_reschedule,
+    workflow.request_reschedule_availability_check,
+    workflow.verify_rescheduled_slot,
     workflow.request_calendar_event_update,
     workflow.complete_meeting_reschedule,
     workflow.fail_meeting_reschedule,
+    workflow.apply_direct_calendar_move,
     workflow.send_reschedule_notice,
     workflow.request_meeting_cancellation,
     workflow.request_calendar_event_deletion,
     workflow.complete_meeting_cancellation,
     workflow.fail_meeting_cancellation,
+    workflow.apply_direct_calendar_deletion,
     workflow.send_cancellation_notice,
     workflow.complete_finished_meeting,
   ]
@@ -56,11 +64,13 @@ chapter "sign_in_and_connect_calendar" {
 
 chapter "configure_availability" {
   title       = "Configure availability"
-  description = "A host creates availability schedules, with weekly hours, date exceptions, a booking window, minimum notice, and buffers. These rules bound every slot that colleagues can see."
+  description = "A host creates availability schedules, with weekly hours, date exceptions, a booking window, minimum notice, and buffers. These rules bound every slot that colleagues can see. A host can change or remove a date exception later. Changes affect new bookings only."
   workflows = [
     workflow.create_availability_schedule,
     workflow.set_weekly_hours,
     workflow.add_date_exception,
+    workflow.change_date_exception,
+    workflow.remove_date_exception,
     workflow.set_booking_limits,
     workflow.view_availability_schedules,
   ]
@@ -68,7 +78,7 @@ chapter "configure_availability" {
 
 chapter "publish_meeting_types" {
   title       = "Publish meeting types"
-  description = "A host creates reusable meeting types. Each one has a stable booking link that the host copies and shares. Only active meeting types accept new bookings."
+  description = "A host creates reusable meeting types. Each one has a stable booking link that the host copies and shares. Only active meeting types accept new bookings. Edits leave booked meetings as they are. A disabled or deleted meeting type stops new bookings, and its booked meetings remain."
   workflows = [
     workflow.create_meeting_type,
     workflow.view_my_meeting_types,
@@ -81,10 +91,12 @@ chapter "publish_meeting_types" {
 
 chapter "book_a_meeting" {
   title       = "Book a meeting"
-  description = "A booker opens a link, sees only valid slots, and confirms one. The scheduler revalidates the slot and reserves it, then creates the calendar event. The meeting is confirmed only when the calendar accepts it. On failure the slot is released and the booker can choose another."
+  description = "A booker opens a link, sees only valid slots, and confirms one. The scheduler revalidates the slot and reserves it, then creates the calendar event. The meeting is confirmed only when the calendar accepts it. On failure the slot is released and the booker can choose another. The held slot is checked live against the host's calendar before the calendar event is created. Both participants are told by email."
   workflows = [
     workflow.view_available_slots,
     workflow.reserve_meeting_slot,
+    workflow.request_booking_availability_check,
+    workflow.verify_booked_slot,
     workflow.request_calendar_event,
     workflow.confirm_booked_meeting,
     workflow.fail_booking,
@@ -105,24 +117,28 @@ chapter "view_scheduled_meetings" {
 
 chapter "reschedule_a_meeting" {
   title       = "Reschedule a meeting"
-  description = "Either participant picks a different available slot. Both slots stay held until the calendar accepts the change. On success the original slot is released and both participants are told. On failure the new slot is released and the meeting keeps its original time."
+  description = "Either participant picks a different available slot. Both slots stay held until the calendar accepts the change. On success the original slot is released and both participants are told. On failure the new slot is released and the meeting keeps its original time. The new slot gets the same live check as a booking. A meeting moved directly in the calendar counts as rescheduled."
   workflows = [
     workflow.request_meeting_reschedule,
+    workflow.request_reschedule_availability_check,
+    workflow.verify_rescheduled_slot,
     workflow.request_calendar_event_update,
     workflow.complete_meeting_reschedule,
     workflow.fail_meeting_reschedule,
+    workflow.apply_direct_calendar_move,
     workflow.send_reschedule_notice,
   ]
 }
 
 chapter "close_out_a_meeting" {
   title       = "Cancel or complete a meeting"
-  description = "Either participant cancels a meeting. The slot is released once the calendar event is gone, and both participants are told. A meeting that runs to its end time becomes completed."
+  description = "Either participant cancels a meeting. The slot is released once the calendar event is gone, and both participants are told. A meeting that runs to its end time becomes completed. A meeting deleted directly in the calendar counts as canceled."
   workflows = [
     workflow.request_meeting_cancellation,
     workflow.request_calendar_event_deletion,
     workflow.complete_meeting_cancellation,
     workflow.fail_meeting_cancellation,
+    workflow.apply_direct_calendar_deletion,
     workflow.send_cancellation_notice,
     workflow.complete_finished_meeting,
   ]
@@ -286,6 +302,60 @@ bounded_context "corporate_calendar" {
       correlation_key = true
     }
   }
+
+  event "host_slot_found_free" {
+    description = "The live free/busy answer: the host is free for the asked time. Holds no calendar content."
+
+    field "scheduler_meeting_ref" {
+      type            = field_type.scheduler_meeting_ref
+      correlation_key = true
+    }
+  }
+
+  event "host_slot_found_busy" {
+    description = "The live free/busy answer: the host is busy for the asked time. Holds no calendar content."
+
+    field "scheduler_meeting_ref" {
+      type            = field_type.scheduler_meeting_ref
+      correlation_key = true
+    }
+  }
+
+  event "availability_check_failed" {
+    description = "The calendar system could not answer the live free/busy question."
+    fields      = [field_type.failure_code]
+
+    field "scheduler_meeting_ref" {
+      type            = field_type.scheduler_meeting_ref
+      correlation_key = true
+    }
+  }
+
+  event "calendar_event_moved_directly" {
+    description = "Someone moved the meeting's event on the host's calendar, outside the scheduler. Holds the new times only."
+
+    field "scheduler_meeting_ref" {
+      type            = field_type.scheduler_meeting_ref
+      correlation_key = true
+    }
+
+    field "moved_start" {
+      type = "DateTime"
+    }
+
+    field "moved_end" {
+      type = "DateTime"
+    }
+  }
+
+  event "calendar_event_deleted_directly" {
+    description = "Someone deleted the meeting's event from the host's calendar, outside the scheduler."
+
+    field "scheduler_meeting_ref" {
+      type            = field_type.scheduler_meeting_ref
+      correlation_key = true
+    }
+  }
 }
 
 bounded_context "employee_directory" {
@@ -403,6 +473,23 @@ bounded_context "host_setup" {
     }
   }
 
+  field_type "date_exceptions" {
+    cardinality = "List"
+    type        = "Custom"
+
+    subfield "exception_date" {
+      type = "Date"
+    }
+
+    subfield "hours" {
+      type = field_type.exception_hours
+    }
+  }
+
+  field_type "accepting_bookings" {
+    type = "Boolean"
+  }
+
   field_type "booking_window_days" {
     type = "Int"
   }
@@ -494,6 +581,18 @@ bounded_context "host_setup" {
     description = "Empty exception_hours mean that the whole date is unavailable."
     aggregate   = aggregate.availability_schedule
     fields      = [field_type.schedule_id, field_type.exception_date, field_type.exception_hours]
+  }
+
+  event "date_exception_changed" {
+    description = "The date keeps an exception with different hours. Empty exception_hours mean that the whole date is unavailable."
+    aggregate   = aggregate.availability_schedule
+    fields      = [field_type.schedule_id, field_type.exception_date, field_type.exception_hours]
+  }
+
+  event "date_exception_removed" {
+    description = "The date goes back to the schedule's weekly hours."
+    aggregate   = aggregate.availability_schedule
+    fields      = [field_type.schedule_id, field_type.exception_date]
   }
 
   event "booking_limits_set" {
@@ -641,6 +740,18 @@ bounded_context "meetings" {
     ]
   }
 
+  event "booking_availability_check_requested" {
+    description = "The live free/busy question for the held slot. It asks for free/busy data only."
+    aggregate   = aggregate.meeting
+    fields      = [field_type.meeting_id, field_type.host_setup.host_id, field_type.slot_start, field_type.slot_end]
+  }
+
+  event "booking_slot_verified" {
+    description = "The calendar system has confirmed that the host is free for the held slot."
+    aggregate   = aggregate.meeting
+    fields      = [field_type.meeting_id]
+  }
+
   event "calendar_event_requested" {
     aggregate = aggregate.meeting
     fields    = [field_type.meeting_id]
@@ -668,6 +779,18 @@ bounded_context "meetings" {
     fields      = [field_type.meeting_id, field_type.host_setup.host_id, field_type.requested_by, field_type.new_slot_start, field_type.new_slot_end, field_type.calendar_event_id, field_type.participants]
   }
 
+  event "reschedule_availability_check_requested" {
+    description = "The live free/busy question for the new slot. It asks for free/busy data only."
+    aggregate   = aggregate.meeting
+    fields      = [field_type.meeting_id, field_type.host_setup.host_id, field_type.new_slot_start, field_type.new_slot_end]
+  }
+
+  event "new_slot_verified" {
+    description = "The calendar system has confirmed that the host is free for the new slot."
+    aggregate   = aggregate.meeting
+    fields      = [field_type.meeting_id]
+  }
+
   event "calendar_event_update_requested" {
     aggregate = aggregate.meeting
     fields    = [field_type.meeting_id, field_type.new_slot_start]
@@ -677,6 +800,12 @@ bounded_context "meetings" {
     description = "The new slot becomes the meeting time and the original slot is released."
     aggregate   = aggregate.meeting
     fields      = [field_type.meeting_id]
+  }
+
+  event "meeting_moved_in_calendar" {
+    description = "The meeting's event was moved directly in the calendar, and the meeting takes that time. Any other slot that the meeting held is released."
+    aggregate   = aggregate.meeting
+    fields      = [field_type.meeting_id, field_type.new_slot_start, field_type.new_slot_end]
   }
 
   event "meeting_reschedule_failed" {
@@ -701,7 +830,7 @@ bounded_context "meetings" {
   }
 
   event "meeting_canceled" {
-    description = "The slot is released."
+    description = "Every slot that the meeting held is released. The cancellation came from the scheduler or from a direct deletion in the calendar."
     aggregate   = aggregate.meeting
     fields      = [field_type.meeting_id]
   }
@@ -819,6 +948,20 @@ lifecycle "availability_schedule" {
   transition "add_date_exception" {
     command = command.add_date_exception.add_date_exception
     events  = [event.host_setup.date_exception_added]
+    before  = [state.defined]
+    after   = state.defined
+  }
+
+  transition "change_date_exception" {
+    command = command.change_date_exception.change_date_exception
+    events  = [event.host_setup.date_exception_changed]
+    before  = [state.defined]
+    after   = state.defined
+  }
+
+  transition "remove_date_exception" {
+    command = command.remove_date_exception.remove_date_exception
+    events  = [event.host_setup.date_exception_removed]
     before  = [state.defined]
     after   = state.defined
   }
@@ -943,6 +1086,20 @@ lifecycle "meeting" {
     after   = state.pending_calendar
   }
 
+  transition "request_booking_check" {
+    command = command.request_booking_availability_check.request_booking_availability_check
+    events  = [event.meetings.booking_availability_check_requested]
+    before  = [state.pending_calendar]
+    after   = state.pending_calendar
+  }
+
+  transition "verify_booked_slot" {
+    command = command.verify_booked_slot.record_booking_slot_verified
+    events  = [event.meetings.booking_slot_verified]
+    before  = [state.pending_calendar]
+    after   = state.pending_calendar
+  }
+
   transition "request_calendar_event" {
     command = command.request_calendar_event.request_calendar_event
     events  = [event.meetings.calendar_event_requested]
@@ -978,6 +1135,20 @@ lifecycle "meeting" {
     after   = state.rescheduling
   }
 
+  transition "request_reschedule_check" {
+    command = command.request_reschedule_availability_check.request_reschedule_availability_check
+    events  = [event.meetings.reschedule_availability_check_requested]
+    before  = [state.rescheduling]
+    after   = state.rescheduling
+  }
+
+  transition "verify_new_slot" {
+    command = command.verify_rescheduled_slot.record_new_slot_verified
+    events  = [event.meetings.new_slot_verified]
+    before  = [state.rescheduling]
+    after   = state.rescheduling
+  }
+
   transition "request_calendar_update" {
     command = command.request_calendar_event_update.request_calendar_event_update
     events  = [event.meetings.calendar_event_update_requested]
@@ -996,6 +1167,13 @@ lifecycle "meeting" {
     command = command.fail_meeting_reschedule.fail_reschedule
     events  = [event.meetings.meeting_reschedule_failed]
     before  = [state.rescheduling]
+    after   = state.confirmed
+  }
+
+  transition "record_direct_move" {
+    command = command.apply_direct_calendar_move.record_meeting_moved
+    events  = [event.meetings.meeting_moved_in_calendar]
+    before  = [state.confirmed, state.rescheduling]
     after   = state.confirmed
   }
 
@@ -1034,6 +1212,13 @@ lifecycle "meeting" {
     after   = state.confirmed
   }
 
+  transition "record_direct_deletion" {
+    command = command.apply_direct_calendar_deletion.record_meeting_deleted
+    events  = [event.meetings.meeting_canceled]
+    before  = [state.confirmed, state.rescheduling, state.canceling]
+    after   = state.canceled
+  }
+
   transition "send_cancellation_notice" {
     command = command.send_cancellation_notice.send_cancellation_notice
     events  = [event.meetings.cancellation_notice_sent]
@@ -1046,6 +1231,24 @@ lifecycle "meeting" {
     events  = [event.meetings.meeting_completed]
     before  = [state.confirmed]
     after   = state.completed
+  }
+
+  invalid_transition "direct_move_during_cancellation" {
+    command = command.apply_direct_calendar_move.record_meeting_moved
+    reason  = "A meeting that is being canceled ignores a direct move."
+    before  = [state.canceling]
+  }
+
+  invalid_transition "direct_move_after_the_end" {
+    command = command.apply_direct_calendar_move.record_meeting_moved
+    reason  = "A meeting that has ended or was canceled ignores a direct move."
+    before  = [state.canceled, state.completed, state.booking_failed]
+  }
+
+  invalid_transition "direct_deletion_after_the_end" {
+    command = command.apply_direct_calendar_deletion.record_meeting_deleted
+    reason  = "A meeting that has ended or was canceled ignores a direct deletion."
+    before  = [state.canceled, state.completed, state.booking_failed]
   }
 
   invalid_transition "reschedule_ended_meeting" {
@@ -1606,6 +1809,27 @@ state_change "set_weekly_hours" {
       error = "A time range must end after it starts."
     }
   }
+
+  scenario "new_hours_leave_booked_meetings_alone" {
+    description = "A meeting already booked outside the new hours stays as booked."
+    case        = "variant"
+
+    given {
+      event = event.host_setup.availability_schedule_created
+    }
+
+    given {
+      event = event.meetings.meeting_confirmed
+    }
+
+    when {
+      command = command.set_weekly_hours
+    }
+
+    then {
+      event = event.host_setup.weekly_hours_set
+    }
+  }
 }
 
 state_change "add_date_exception" {
@@ -1657,6 +1881,70 @@ state_change "add_date_exception" {
   }
 }
 
+state_change "change_date_exception" {
+  status = "created"
+
+  screen "change_exception" {
+    actor  = actor.meeting_host
+    fields = [field_type.host_setup.schedule_id, field_type.host_setup.exception_date, field_type.host_setup.exception_hours]
+    to     = [command.change_date_exception]
+  }
+
+  command "change_date_exception" {
+    aggregate = aggregate.host_setup.availability_schedule
+    fields    = [field_type.host_setup.schedule_id, field_type.host_setup.exception_date, field_type.host_setup.exception_hours]
+    to        = [event.host_setup.date_exception_changed]
+  }
+
+  scenario "host_changes_the_hours_of_an_exception" {
+    case = "happy_path"
+
+    given {
+      event = event.host_setup.date_exception_added
+    }
+
+    when {
+      command = command.change_date_exception
+    }
+
+    then {
+      event = event.host_setup.date_exception_changed
+    }
+  }
+}
+
+state_change "remove_date_exception" {
+  status = "created"
+
+  screen "remove_exception" {
+    actor  = actor.meeting_host
+    fields = [field_type.host_setup.schedule_id, field_type.host_setup.exception_date]
+    to     = [command.remove_date_exception]
+  }
+
+  command "remove_date_exception" {
+    aggregate = aggregate.host_setup.availability_schedule
+    fields    = [field_type.host_setup.schedule_id, field_type.host_setup.exception_date]
+    to        = [event.host_setup.date_exception_removed]
+  }
+
+  scenario "host_removes_an_exception" {
+    case = "happy_path"
+
+    given {
+      event = event.host_setup.date_exception_added
+    }
+
+    when {
+      command = command.remove_date_exception
+    }
+
+    then {
+      event = event.host_setup.date_exception_removed
+    }
+  }
+}
+
 state_change "set_booking_limits" {
   description = "The booking window, minimum advance notice, and buffers between meetings."
   status      = "created"
@@ -1695,11 +1983,13 @@ state_view "view_availability_schedules" {
 
   readmodel "my_availability_schedules" {
     question = "Which availability schedules have I defined, and what are their rules?"
-    fields   = [field_type.host_setup.schedule_id, field_type.host_setup.host_id, field_type.host_setup.schedule_name, field_type.host_setup.time_zone, field_type.host_setup.weekly_hours, field_type.host_setup.booking_window_days, field_type.host_setup.minimum_notice_minutes, field_type.host_setup.buffer_before_minutes, field_type.host_setup.buffer_after_minutes]
+    fields   = [field_type.host_setup.schedule_id, field_type.host_setup.host_id, field_type.host_setup.schedule_name, field_type.host_setup.time_zone, field_type.host_setup.weekly_hours, field_type.host_setup.date_exceptions, field_type.host_setup.booking_window_days, field_type.host_setup.minimum_notice_minutes, field_type.host_setup.buffer_before_minutes, field_type.host_setup.buffer_after_minutes]
     from = [
       event.host_setup.availability_schedule_created,
       event.host_setup.weekly_hours_set,
       event.host_setup.date_exception_added,
+      event.host_setup.date_exception_changed,
+      event.host_setup.date_exception_removed,
       event.host_setup.booking_limits_set,
     ]
     to = [screen.availability_schedules]
@@ -1707,7 +1997,18 @@ state_view "view_availability_schedules" {
 
   screen "availability_schedules" {
     actor  = actor.meeting_host
-    fields = [field_type.host_setup.schedule_id, field_type.host_setup.schedule_name, field_type.host_setup.time_zone, field_type.host_setup.weekly_hours, field_type.host_setup.booking_window_days, field_type.host_setup.minimum_notice_minutes, field_type.host_setup.buffer_before_minutes, field_type.host_setup.buffer_after_minutes]
+    fields = [field_type.host_setup.schedule_id, field_type.host_setup.schedule_name, field_type.host_setup.time_zone, field_type.host_setup.weekly_hours, field_type.host_setup.date_exceptions, field_type.host_setup.booking_window_days, field_type.host_setup.minimum_notice_minutes, field_type.host_setup.buffer_before_minutes, field_type.host_setup.buffer_after_minutes]
+  }
+
+  field_source {
+    description = "The current exception of each date. A changed exception replaces its hours, and a removed exception leaves the list."
+    inputs = [
+      event.host_setup.date_exception_added.field.exception_date,
+      event.host_setup.date_exception_added.field.exception_hours,
+      event.host_setup.date_exception_changed.field.exception_hours,
+      event.host_setup.date_exception_removed.field.exception_date,
+    ]
+    target = readmodel.my_availability_schedules.field.date_exceptions
   }
 
   scenario "no_schedule_yet" {
@@ -1744,6 +2045,46 @@ state_view "view_availability_schedules" {
 
     given {
       event = event.host_setup.booking_limits_set
+    }
+
+    then {
+      readmodel = readmodel.my_availability_schedules
+    }
+  }
+
+  scenario "changed_exception_updates_the_schedule" {
+    case = "change"
+
+    given {
+      event = event.host_setup.availability_schedule_created
+    }
+
+    given {
+      event = event.host_setup.date_exception_added
+    }
+
+    given {
+      event = event.host_setup.date_exception_changed
+    }
+
+    then {
+      readmodel = readmodel.my_availability_schedules
+    }
+  }
+
+  scenario "removed_exception_leaves_the_schedule" {
+    case = "disappear"
+
+    given {
+      event = event.host_setup.availability_schedule_created
+    }
+
+    given {
+      event = event.host_setup.date_exception_added
+    }
+
+    given {
+      event = event.host_setup.date_exception_removed
     }
 
     then {
@@ -1991,6 +2332,27 @@ state_change "edit_meeting_type" {
       error = "A deleted meeting type cannot be edited."
     }
   }
+
+  scenario "edit_leaves_booked_meetings_alone" {
+    description = "A booked meeting keeps the title, duration, and location captured at booking."
+    case        = "variant"
+
+    given {
+      event = event.host_setup.meeting_type_created
+    }
+
+    given {
+      event = event.meetings.meeting_confirmed
+    }
+
+    when {
+      command = command.edit_meeting_type
+    }
+
+    then {
+      event = event.host_setup.meeting_type_edited
+    }
+  }
 }
 
 state_change "disable_meeting_type" {
@@ -2107,6 +2469,27 @@ state_change "delete_meeting_type" {
       event = event.host_setup.meeting_type_deleted
     }
   }
+
+  scenario "delete_leaves_upcoming_meetings_in_place" {
+    description = "Upcoming meetings of the deleted type remain. They can still be rescheduled or canceled, and only new bookings stop."
+    case        = "variant"
+
+    given {
+      event = event.host_setup.meeting_type_created
+    }
+
+    given {
+      event = event.meetings.meeting_confirmed
+    }
+
+    when {
+      command = command.delete_meeting_type
+    }
+
+    then {
+      event = event.host_setup.meeting_type_deleted
+    }
+  }
 }
 
 state_view "view_available_slots" {
@@ -2115,7 +2498,7 @@ state_view "view_available_slots" {
 
   readmodel "available_slots" {
     question = "Which times can be booked for this meeting type, and what are its details?"
-    fields   = [field_type.host_setup.meeting_type_id, field_type.host_setup.host_id, field_type.host_setup.meeting_title, field_type.host_setup.duration_minutes, field_type.host_setup.meeting_location, field_type.meetings.available_slots]
+    fields   = [field_type.host_setup.meeting_type_id, field_type.host_setup.host_id, field_type.host_setup.meeting_title, field_type.host_setup.duration_minutes, field_type.host_setup.meeting_location, field_type.meetings.available_slots, field_type.host_setup.accepting_bookings]
     from = [
       event.employee_directory.employee_registered,
       event.host_setup.meeting_type_created,
@@ -2126,6 +2509,8 @@ state_view "view_available_slots" {
       event.host_setup.availability_schedule_created,
       event.host_setup.weekly_hours_set,
       event.host_setup.date_exception_added,
+      event.host_setup.date_exception_changed,
+      event.host_setup.date_exception_removed,
       event.host_setup.booking_limits_set,
       event.host_setup.calendar_connected,
       event.host_setup.calendar_connection_failed,
@@ -2134,6 +2519,7 @@ state_view "view_available_slots" {
       event.meetings.meeting_booking_failed,
       event.meetings.meeting_reschedule_requested,
       event.meetings.meeting_rescheduled,
+      event.meetings.meeting_moved_in_calendar,
       event.meetings.meeting_reschedule_failed,
       event.meetings.meeting_canceled,
     ]
@@ -2152,7 +2538,7 @@ state_view "view_available_slots" {
 
   screen "booking_page" {
     actor  = actor.meeting_booker
-    fields = [field_type.host_setup.meeting_type_id, field_type.host_setup.meeting_title, field_type.host_setup.duration_minutes, field_type.host_setup.meeting_location, field_type.meetings.available_slots]
+    fields = [field_type.host_setup.meeting_type_id, field_type.host_setup.meeting_title, field_type.host_setup.duration_minutes, field_type.host_setup.meeting_location, field_type.meetings.available_slots, field_type.host_setup.accepting_bookings]
 
     field "host_name" {
       type = field_type.employee_directory.employee_name
@@ -2171,10 +2557,12 @@ state_view "view_available_slots" {
   }
 
   field_source {
-    description = "Start from the weekly hours in the schedule's time zone, so that local hours hold across daylight-saving changes. Apply date exceptions, the booking window, and minimum notice. Remove busy intervals and held slots with their buffers. Cut what remains to the meeting duration. Offer nothing when the calendar connection has failed or the meeting type is not active."
+    description = "Start from the weekly hours in the schedule's time zone, so that local hours hold across daylight-saving changes. Apply date exceptions, the booking window, and minimum notice. Remove busy intervals and held slots with their buffers. Cut what remains to the meeting duration. Offer nothing when the calendar connection has failed. The state of the meeting type does not change this calculation, so a meeting of a disabled or deleted type can still get a new time."
     inputs = [
       event.host_setup.weekly_hours_set.field.weekly_hours,
       event.host_setup.date_exception_added.field.exception_date,
+      event.host_setup.date_exception_changed.field.exception_hours,
+      event.host_setup.date_exception_removed.field.exception_date,
       event.host_setup.booking_limits_set.field.minimum_notice_minutes,
       event.host_setup.booking_limits_set.field.booking_window_days,
       event.host_setup.booking_limits_set.field.buffer_before_minutes,
@@ -2183,8 +2571,15 @@ state_view "view_available_slots" {
       event.host_setup.meeting_type_created.field.duration_minutes,
       event.meetings.meeting_slot_reserved.field.slot_start,
       event.meetings.meeting_reschedule_requested.field.new_slot_start,
+      event.meetings.meeting_moved_in_calendar.field.new_slot_start,
     ]
     target = readmodel.available_slots.field.available_slots
+  }
+
+  field_source {
+    description = "True only while the meeting type is enabled. When false, the booking page offers no slots. The reschedule picker ignores this value."
+    inputs      = [event.host_setup.meeting_type_created.field.meeting_type_id, event.host_setup.meeting_type_disabled.field.meeting_type_id, event.host_setup.meeting_type_enabled.field.meeting_type_id, event.host_setup.meeting_type_deleted.field.meeting_type_id]
+    target      = readmodel.available_slots.field.accepting_bookings
   }
 
   field_source {
@@ -2318,8 +2713,9 @@ state_view "view_available_slots" {
     }
   }
 
-  scenario "disabled_meeting_type_offers_no_slots" {
-    case = "disappear"
+  scenario "disabled_meeting_type_stops_new_bookings" {
+    description = "The booking page offers no slots. A booked meeting of this type can still get a new time."
+    case        = "change"
 
     given {
       event = event.host_setup.calendar_connected
@@ -2338,8 +2734,8 @@ state_view "view_available_slots" {
     }
 
     then {
-      expect_empty_list = true
-      readmodel         = readmodel.available_slots
+      examples  = [{ accepting_bookings = false }]
+      readmodel = readmodel.available_slots
     }
   }
 
@@ -2463,10 +2859,112 @@ state_view "view_available_slots" {
       readmodel = readmodel.available_slots
     }
   }
+
+  scenario "deleted_meeting_type_stops_new_bookings" {
+    description = "The booking page offers no slots. A booked meeting of this type can still get a new time."
+    case        = "change"
+
+    given {
+      event = event.host_setup.calendar_connected
+    }
+
+    given {
+      event = event.host_setup.weekly_hours_set
+    }
+
+    given {
+      event = event.host_setup.meeting_type_created
+    }
+
+    given {
+      event = event.host_setup.meeting_type_deleted
+    }
+
+    then {
+      examples  = [{ accepting_bookings = false }]
+      readmodel = readmodel.available_slots
+    }
+  }
+
+  scenario "removed_exception_reopens_the_day" {
+    case = "appear"
+
+    given {
+      event = event.host_setup.calendar_connected
+    }
+
+    given {
+      event = event.host_setup.weekly_hours_set
+    }
+
+    given {
+      event = event.host_setup.meeting_type_created
+    }
+
+    given {
+      event = event.host_setup.date_exception_added
+    }
+
+    given {
+      event = event.host_setup.date_exception_removed
+    }
+
+    then {
+      readmodel = readmodel.available_slots
+    }
+  }
+
+  scenario "changed_exception_changes_the_day" {
+    case = "change"
+
+    given {
+      event = event.host_setup.calendar_connected
+    }
+
+    given {
+      event = event.host_setup.weekly_hours_set
+    }
+
+    given {
+      event = event.host_setup.meeting_type_created
+    }
+
+    given {
+      event = event.host_setup.date_exception_added
+    }
+
+    given {
+      event = event.host_setup.date_exception_changed
+    }
+
+    then {
+      readmodel = readmodel.available_slots
+    }
+  }
+
+  scenario "direct_move_swaps_the_held_slot" {
+    case = "change"
+
+    given {
+      event = event.meetings.meeting_slot_reserved
+    }
+
+    given {
+      event = event.meetings.meeting_confirmed
+    }
+
+    given {
+      event = event.meetings.meeting_moved_in_calendar
+    }
+
+    then {
+      readmodel = readmodel.available_slots
+    }
+  }
 }
 
 state_change "reserve_meeting_slot" {
-  description = "The booker reviews the details and confirms. This is the revalidation point and the guard against double booking."
+  description = "The booker reviews the details and confirms. This step checks the last known data and guards against double booking. The held slot then gets a live check against the host's calendar before the meeting is confirmed."
   status      = "created"
 
   screen "review_booking" {
@@ -2699,16 +3197,190 @@ state_change "reserve_meeting_slot" {
       error = "Sign in with your corporate account to book this meeting."
     }
   }
+
+  scenario "deleted_meeting_type_is_refused" {
+    case = "state_violation"
+
+    given {
+      event = event.host_setup.meeting_type_created
+    }
+
+    given {
+      event = event.host_setup.meeting_type_deleted
+    }
+
+    when {
+      command = command.reserve_meeting_slot
+    }
+
+    then {
+      error = "This meeting type is not accepting bookings."
+    }
+  }
+
+  scenario "host_cannot_book_their_own_link" {
+    description = "The signed-in employee is the host of this meeting type."
+    case        = "authorization"
+
+    given {
+      event = event.host_setup.meeting_type_created
+    }
+
+    when {
+      command = command.reserve_meeting_slot
+    }
+
+    then {
+      error = "You cannot book a meeting with yourself."
+    }
+  }
+}
+
+automation "request_booking_availability_check" {
+  description = "Worker. Asks the calendar system whether the host is free for the held slot, right now. Only free/busy data is asked for."
+  status      = "created"
+
+  readmodel "reservations_awaiting_live_check" {
+    question = "Which held slots still need a live check of the host's calendar?"
+    fields   = [field_type.meetings.meeting_id, field_type.host_setup.host_id, field_type.meetings.slot_start, field_type.meetings.slot_end]
+    from     = [event.meetings.meeting_slot_reserved, event.meetings.booking_availability_check_requested]
+    to       = [processor.booking_check_requester]
+  }
+
+  processor "booking_check_requester" {
+    fields = [field_type.meetings.meeting_id, field_type.host_setup.host_id, field_type.meetings.slot_start, field_type.meetings.slot_end]
+    to     = [command.request_booking_availability_check]
+  }
+
+  command "request_booking_availability_check" {
+    aggregate = aggregate.meetings.meeting
+    fields    = [field_type.meetings.meeting_id, field_type.host_setup.host_id, field_type.meetings.slot_start, field_type.meetings.slot_end]
+    to        = [event.meetings.booking_availability_check_requested]
+  }
+
+  scenario "check_is_requested" {
+    case = "happy_path"
+
+    given {
+      event = event.meetings.meeting_slot_reserved
+    }
+
+    given {
+      readmodel = readmodel.reservations_awaiting_live_check
+    }
+
+    when {
+      processor = processor.booking_check_requester
+    }
+
+    then {
+      event = event.meetings.booking_availability_check_requested
+    }
+  }
+
+  scenario "held_slot_waits_for_its_check" {
+    case = "appear"
+
+    given {
+      event = event.meetings.meeting_slot_reserved
+    }
+
+    then {
+      readmodel = readmodel.reservations_awaiting_live_check
+    }
+  }
+
+  scenario "requested_check_leaves_the_list" {
+    case = "disappear"
+
+    given {
+      event = event.meetings.meeting_slot_reserved
+    }
+
+    given {
+      event = event.meetings.booking_availability_check_requested
+    }
+
+    then {
+      expect_empty_list = true
+      readmodel         = readmodel.reservations_awaiting_live_check
+    }
+  }
+}
+
+automation "verify_booked_slot" {
+  description = "Translation. The calendar system reports that the host is free for the held slot."
+  status      = "created"
+
+  readmodel "free_answers_for_bookings" {
+    question = "For which held slots has the calendar system confirmed that the host is free?"
+    fields   = [field_type.meetings.meeting_id]
+    from     = [event.corporate_calendar.host_slot_found_free, event.meetings.booking_availability_check_requested]
+    to       = [processor.booking_free_translator]
+  }
+
+  processor "booking_free_translator" {
+    fields = [field_type.meetings.meeting_id]
+    to     = [command.record_booking_slot_verified]
+  }
+
+  command "record_booking_slot_verified" {
+    aggregate = aggregate.meetings.meeting
+    fields    = [field_type.meetings.meeting_id]
+    to        = [event.meetings.booking_slot_verified]
+  }
+
+  field_source {
+    description = "The meeting named in the answer. The request lists only the answers that belong to this kind of check."
+    inputs      = [event.corporate_calendar.host_slot_found_free.field.scheduler_meeting_ref, event.meetings.booking_availability_check_requested.field.meeting_id]
+    target      = readmodel.free_answers_for_bookings.field.meeting_id
+  }
+
+  scenario "free_host_verifies_the_slot" {
+    case = "happy_path"
+
+    given {
+      event = event.meetings.booking_availability_check_requested
+    }
+
+    given {
+      event = event.corporate_calendar.host_slot_found_free
+    }
+
+    when {
+      processor = processor.booking_free_translator
+    }
+
+    then {
+      event = event.meetings.booking_slot_verified
+    }
+  }
+
+  scenario "free_answer_is_listed" {
+    case = "appear"
+
+    given {
+      event = event.meetings.booking_availability_check_requested
+    }
+
+    given {
+      event = event.corporate_calendar.host_slot_found_free
+    }
+
+    then {
+      readmodel = readmodel.free_answers_for_bookings
+    }
+  }
 }
 
 automation "request_calendar_event" {
-  description = "Worker. Asks the calendar system to create the event with both participants, which also sends the invitation."
+  description = "Worker. Once the live check has passed, asks the calendar system to create the event with both participants, which also sends the invitation."
   status      = "created"
 
   readmodel "reservations_awaiting_calendar_event" {
-    question = "Which reserved meetings still need a calendar event?"
+    question = "Which verified reservations still need a calendar event?"
     fields   = [field_type.meetings.meeting_id, field_type.host_setup.meeting_title, field_type.host_setup.meeting_location, field_type.meetings.slot_start, field_type.meetings.slot_end, field_type.meetings.participants]
-    from     = [event.meetings.meeting_slot_reserved, event.meetings.calendar_event_requested]
+    from     = [event.meetings.meeting_slot_reserved, event.meetings.booking_slot_verified, event.meetings.calendar_event_requested]
     to       = [processor.calendar_event_requester]
   }
 
@@ -2731,6 +3403,10 @@ automation "request_calendar_event" {
     }
 
     given {
+      event = event.meetings.booking_slot_verified
+    }
+
+    given {
       readmodel = readmodel.reservations_awaiting_calendar_event
     }
 
@@ -2750,6 +3426,10 @@ automation "request_calendar_event" {
       event = event.meetings.meeting_slot_reserved
     }
 
+    given {
+      event = event.meetings.booking_slot_verified
+    }
+
     then {
       readmodel = readmodel.reservations_awaiting_calendar_event
     }
@@ -2763,7 +3443,24 @@ automation "request_calendar_event" {
     }
 
     given {
+      event = event.meetings.booking_slot_verified
+    }
+
+    given {
       event = event.meetings.calendar_event_requested
+    }
+
+    then {
+      expect_empty_list = true
+      readmodel         = readmodel.reservations_awaiting_calendar_event
+    }
+  }
+
+  scenario "unchecked_reservation_is_not_requested" {
+    case = "disappear"
+
+    given {
+      event = event.meetings.meeting_slot_reserved
     }
 
     then {
@@ -2839,13 +3536,13 @@ automation "confirm_booked_meeting" {
 }
 
 automation "fail_booking" {
-  description = "Translation. The calendar system could not create the event, so the reservation does not stand and the slot is released."
+  description = "Translation. The live check found the host busy or could not be answered, or the calendar system could not create the event. The reservation does not stand and the slot is released."
   status      = "created"
 
   readmodel "failed_calendar_events" {
-    question = "Which meetings could the calendar system not create an event for?"
+    question = "Which bookings failed their live check, or could the calendar system not create an event for?"
     fields   = [field_type.meetings.meeting_id, field_type.meetings.failure_reason]
-    from     = [event.corporate_calendar.calendar_event_creation_failed]
+    from     = [event.corporate_calendar.calendar_event_creation_failed, event.corporate_calendar.host_slot_found_busy, event.corporate_calendar.availability_check_failed, event.meetings.booking_availability_check_requested]
     to       = [processor.calendar_failure_translator]
   }
 
@@ -2861,13 +3558,14 @@ automation "fail_booking" {
   }
 
   field_source {
-    inputs = [event.corporate_calendar.calendar_event_creation_failed.field.scheduler_meeting_ref]
+    inputs = [event.corporate_calendar.calendar_event_creation_failed.field.scheduler_meeting_ref, event.corporate_calendar.host_slot_found_busy.field.scheduler_meeting_ref, event.corporate_calendar.availability_check_failed.field.scheduler_meeting_ref]
     target = readmodel.failed_calendar_events.field.meeting_id
   }
 
   field_source {
-    inputs = [event.corporate_calendar.calendar_event_creation_failed.field.failure_code]
-    target = readmodel.failed_calendar_events.field.failure_reason
+    description = "A busy answer gives 'This time is no longer available. Please choose another slot.' A failed check gives 'The host's availability cannot be verified right now. Please try again later.' A refused calendar change keeps its failure code."
+    inputs      = [event.corporate_calendar.calendar_event_creation_failed.field.failure_code, event.corporate_calendar.host_slot_found_busy.field.scheduler_meeting_ref, event.corporate_calendar.availability_check_failed.field.failure_code]
+    target      = readmodel.failed_calendar_events.field.failure_reason
   }
 
   scenario "calendar_failure_fails_the_booking" {
@@ -2899,6 +3597,46 @@ automation "fail_booking" {
 
     then {
       readmodel = readmodel.failed_calendar_events
+    }
+  }
+
+  scenario "busy_host_fails_the_booking" {
+    case = "external_failure"
+
+    given {
+      event = event.meetings.booking_availability_check_requested
+    }
+
+    given {
+      event = event.corporate_calendar.host_slot_found_busy
+    }
+
+    when {
+      processor = processor.calendar_failure_translator
+    }
+
+    then {
+      event = event.meetings.meeting_booking_failed
+    }
+  }
+
+  scenario "unanswered_check_fails_the_booking" {
+    case = "external_failure"
+
+    given {
+      event = event.meetings.booking_availability_check_requested
+    }
+
+    given {
+      event = event.corporate_calendar.availability_check_failed
+    }
+
+    when {
+      processor = processor.calendar_failure_translator
+    }
+
+    then {
+      event = event.meetings.meeting_booking_failed
     }
   }
 }
@@ -2974,7 +3712,7 @@ state_view "view_booking_outcome" {
 }
 
 automation "send_booking_confirmation" {
-  description = "Worker. Both participants receive confirmation once the meeting is confirmed."
+  description = "Worker. Both participants receive a confirmation email once the meeting is confirmed."
   status      = "created"
 
   readmodel "confirmations_to_send" {
@@ -3082,6 +3820,7 @@ state_view "view_hosted_meetings" {
       event.meetings.meeting_confirmed,
       event.meetings.meeting_reschedule_requested,
       event.meetings.meeting_rescheduled,
+      event.meetings.meeting_moved_in_calendar,
       event.meetings.meeting_canceled,
       event.meetings.meeting_completed,
     ]
@@ -3094,14 +3833,14 @@ state_view "view_hosted_meetings" {
   }
 
   field_source {
-    description = "The latest of the meeting's time facts decides: the reserved slot, then the slot of the latest completed reschedule."
-    inputs      = [event.meetings.meeting_slot_reserved.field.slot_start, event.meetings.meeting_reschedule_requested.field.new_slot_start]
+    description = "The latest of the meeting's time facts decides: the reserved slot, then the slot of the latest completed reschedule or direct calendar move."
+    inputs      = [event.meetings.meeting_slot_reserved.field.slot_start, event.meetings.meeting_reschedule_requested.field.new_slot_start, event.meetings.meeting_moved_in_calendar.field.new_slot_start]
     target      = readmodel.hosted_meetings.field.slot_start
   }
 
   field_source {
-    description = "The latest of the meeting's time facts decides: the reserved slot, then the slot of the latest completed reschedule."
-    inputs      = [event.meetings.meeting_slot_reserved.field.slot_end, event.meetings.meeting_reschedule_requested.field.new_slot_end]
+    description = "The latest of the meeting's time facts decides: the reserved slot, then the slot of the latest completed reschedule or direct calendar move."
+    inputs      = [event.meetings.meeting_slot_reserved.field.slot_end, event.meetings.meeting_reschedule_requested.field.new_slot_end, event.meetings.meeting_moved_in_calendar.field.new_slot_end]
     target      = readmodel.hosted_meetings.field.slot_end
   }
 
@@ -3202,6 +3941,26 @@ state_view "view_hosted_meetings" {
       readmodel = readmodel.hosted_meetings
     }
   }
+
+  scenario "direct_move_shows_the_new_time" {
+    case = "change"
+
+    given {
+      event = event.meetings.meeting_slot_reserved
+    }
+
+    given {
+      event = event.meetings.meeting_confirmed
+    }
+
+    given {
+      event = event.meetings.meeting_moved_in_calendar
+    }
+
+    then {
+      readmodel = readmodel.hosted_meetings
+    }
+  }
 }
 
 state_view "view_my_booked_meetings" {
@@ -3216,6 +3975,7 @@ state_view "view_my_booked_meetings" {
       event.meetings.meeting_confirmed,
       event.meetings.meeting_reschedule_requested,
       event.meetings.meeting_rescheduled,
+      event.meetings.meeting_moved_in_calendar,
       event.meetings.meeting_canceled,
       event.meetings.meeting_completed,
     ]
@@ -3228,14 +3988,14 @@ state_view "view_my_booked_meetings" {
   }
 
   field_source {
-    description = "The latest of the meeting's time facts decides: the reserved slot, then the slot of the latest completed reschedule."
-    inputs      = [event.meetings.meeting_slot_reserved.field.slot_start, event.meetings.meeting_reschedule_requested.field.new_slot_start]
+    description = "The latest of the meeting's time facts decides: the reserved slot, then the slot of the latest completed reschedule or direct calendar move."
+    inputs      = [event.meetings.meeting_slot_reserved.field.slot_start, event.meetings.meeting_reschedule_requested.field.new_slot_start, event.meetings.meeting_moved_in_calendar.field.new_slot_start]
     target      = readmodel.my_booked_meetings.field.slot_start
   }
 
   field_source {
-    description = "The latest of the meeting's time facts decides: the reserved slot, then the slot of the latest completed reschedule."
-    inputs      = [event.meetings.meeting_slot_reserved.field.slot_end, event.meetings.meeting_reschedule_requested.field.new_slot_end]
+    description = "The latest of the meeting's time facts decides: the reserved slot, then the slot of the latest completed reschedule or direct calendar move."
+    inputs      = [event.meetings.meeting_slot_reserved.field.slot_end, event.meetings.meeting_reschedule_requested.field.new_slot_end, event.meetings.meeting_moved_in_calendar.field.new_slot_end]
     target      = readmodel.my_booked_meetings.field.slot_end
   }
 
@@ -3304,6 +4064,7 @@ state_view "view_meeting_details" {
       event.meetings.meeting_confirmed,
       event.meetings.meeting_reschedule_requested,
       event.meetings.meeting_rescheduled,
+      event.meetings.meeting_moved_in_calendar,
       event.meetings.meeting_reschedule_failed,
       event.meetings.meeting_cancellation_requested,
       event.meetings.meeting_canceled,
@@ -3319,14 +4080,14 @@ state_view "view_meeting_details" {
   }
 
   field_source {
-    description = "The latest of the meeting's time facts decides: the reserved slot, then the slot of the latest completed reschedule."
-    inputs      = [event.meetings.meeting_slot_reserved.field.slot_start, event.meetings.meeting_reschedule_requested.field.new_slot_start]
+    description = "The latest of the meeting's time facts decides: the reserved slot, then the slot of the latest completed reschedule or direct calendar move."
+    inputs      = [event.meetings.meeting_slot_reserved.field.slot_start, event.meetings.meeting_reschedule_requested.field.new_slot_start, event.meetings.meeting_moved_in_calendar.field.new_slot_start]
     target      = readmodel.meeting_details.field.slot_start
   }
 
   field_source {
-    description = "The latest of the meeting's time facts decides: the reserved slot, then the slot of the latest completed reschedule."
-    inputs      = [event.meetings.meeting_slot_reserved.field.slot_end, event.meetings.meeting_reschedule_requested.field.new_slot_end]
+    description = "The latest of the meeting's time facts decides: the reserved slot, then the slot of the latest completed reschedule or direct calendar move."
+    inputs      = [event.meetings.meeting_slot_reserved.field.slot_end, event.meetings.meeting_reschedule_requested.field.new_slot_end, event.meetings.meeting_moved_in_calendar.field.new_slot_end]
     target      = readmodel.meeting_details.field.slot_end
   }
 
@@ -3393,6 +4154,26 @@ state_view "view_meeting_details" {
 
     given {
       event = event.meetings.meeting_cancellation_failed
+    }
+
+    then {
+      readmodel = readmodel.meeting_details
+    }
+  }
+
+  scenario "direct_move_shows_the_new_time" {
+    case = "change"
+
+    given {
+      event = event.meetings.meeting_slot_reserved
+    }
+
+    given {
+      event = event.meetings.meeting_confirmed
+    }
+
+    given {
+      event = event.meetings.meeting_moved_in_calendar
     }
 
     then {
@@ -3553,16 +4334,212 @@ state_change "request_meeting_reschedule" {
       error = "Only the participants of this meeting can change it."
     }
   }
+
+  scenario "meeting_of_a_deleted_type_can_get_a_new_time" {
+    case = "variant"
+
+    given {
+      event = event.host_setup.meeting_type_deleted
+    }
+
+    given {
+      event = event.meetings.meeting_slot_reserved
+    }
+
+    given {
+      event = event.meetings.meeting_confirmed
+    }
+
+    when {
+      command = command.request_meeting_reschedule
+    }
+
+    then {
+      event = event.meetings.meeting_reschedule_requested
+    }
+  }
+}
+
+automation "request_reschedule_availability_check" {
+  description = "Worker. Asks the calendar system whether the host is free for the new slot, right now. Only free/busy data is asked for."
+  status      = "created"
+
+  readmodel "reschedules_awaiting_live_check" {
+    question = "Which requested new times still need a live check of the host's calendar?"
+    fields   = [field_type.meetings.meeting_id, field_type.host_setup.host_id, field_type.meetings.new_slot_start, field_type.meetings.new_slot_end]
+    from     = [event.meetings.meeting_reschedule_requested, event.meetings.reschedule_availability_check_requested, event.meetings.meeting_moved_in_calendar, event.meetings.meeting_canceled]
+    to       = [processor.reschedule_check_requester]
+  }
+
+  processor "reschedule_check_requester" {
+    fields = [field_type.meetings.meeting_id, field_type.host_setup.host_id, field_type.meetings.new_slot_start, field_type.meetings.new_slot_end]
+    to     = [command.request_reschedule_availability_check]
+  }
+
+  command "request_reschedule_availability_check" {
+    aggregate = aggregate.meetings.meeting
+    fields    = [field_type.meetings.meeting_id, field_type.host_setup.host_id, field_type.meetings.new_slot_start, field_type.meetings.new_slot_end]
+    to        = [event.meetings.reschedule_availability_check_requested]
+  }
+
+  scenario "check_is_requested" {
+    case = "happy_path"
+
+    given {
+      event = event.meetings.meeting_reschedule_requested
+    }
+
+    given {
+      readmodel = readmodel.reschedules_awaiting_live_check
+    }
+
+    when {
+      processor = processor.reschedule_check_requester
+    }
+
+    then {
+      event = event.meetings.reschedule_availability_check_requested
+    }
+  }
+
+  scenario "held_slot_waits_for_its_check" {
+    case = "appear"
+
+    given {
+      event = event.meetings.meeting_reschedule_requested
+    }
+
+    then {
+      readmodel = readmodel.reschedules_awaiting_live_check
+    }
+  }
+
+  scenario "requested_check_leaves_the_list" {
+    case = "disappear"
+
+    given {
+      event = event.meetings.meeting_reschedule_requested
+    }
+
+    given {
+      event = event.meetings.reschedule_availability_check_requested
+    }
+
+    then {
+      expect_empty_list = true
+      readmodel         = readmodel.reschedules_awaiting_live_check
+    }
+  }
+
+  scenario "direct_move_stops_the_check" {
+    description = "The calendar wins, so the reschedule in progress is replaced."
+    case        = "disappear"
+
+    given {
+      event = event.meetings.meeting_reschedule_requested
+    }
+
+    given {
+      event = event.meetings.meeting_moved_in_calendar
+    }
+
+    then {
+      expect_empty_list = true
+      readmodel         = readmodel.reschedules_awaiting_live_check
+    }
+  }
+
+  scenario "direct_deletion_stops_the_check" {
+    case = "disappear"
+
+    given {
+      event = event.meetings.meeting_reschedule_requested
+    }
+
+    given {
+      event = event.meetings.meeting_canceled
+    }
+
+    then {
+      expect_empty_list = true
+      readmodel         = readmodel.reschedules_awaiting_live_check
+    }
+  }
+}
+
+automation "verify_rescheduled_slot" {
+  description = "Translation. The calendar system reports that the host is free for the new slot."
+  status      = "created"
+
+  readmodel "free_answers_for_reschedules" {
+    question = "For which new times has the calendar system confirmed that the host is free?"
+    fields   = [field_type.meetings.meeting_id]
+    from     = [event.corporate_calendar.host_slot_found_free, event.meetings.reschedule_availability_check_requested]
+    to       = [processor.reschedule_free_translator]
+  }
+
+  processor "reschedule_free_translator" {
+    fields = [field_type.meetings.meeting_id]
+    to     = [command.record_new_slot_verified]
+  }
+
+  command "record_new_slot_verified" {
+    aggregate = aggregate.meetings.meeting
+    fields    = [field_type.meetings.meeting_id]
+    to        = [event.meetings.new_slot_verified]
+  }
+
+  field_source {
+    description = "The meeting named in the answer. The request lists only the answers that belong to this kind of check."
+    inputs      = [event.corporate_calendar.host_slot_found_free.field.scheduler_meeting_ref, event.meetings.reschedule_availability_check_requested.field.meeting_id]
+    target      = readmodel.free_answers_for_reschedules.field.meeting_id
+  }
+
+  scenario "free_host_verifies_the_slot" {
+    case = "happy_path"
+
+    given {
+      event = event.meetings.reschedule_availability_check_requested
+    }
+
+    given {
+      event = event.corporate_calendar.host_slot_found_free
+    }
+
+    when {
+      processor = processor.reschedule_free_translator
+    }
+
+    then {
+      event = event.meetings.new_slot_verified
+    }
+  }
+
+  scenario "free_answer_is_listed" {
+    case = "appear"
+
+    given {
+      event = event.meetings.reschedule_availability_check_requested
+    }
+
+    given {
+      event = event.corporate_calendar.host_slot_found_free
+    }
+
+    then {
+      readmodel = readmodel.free_answers_for_reschedules
+    }
+  }
 }
 
 automation "request_calendar_event_update" {
-  description = "Worker. Asks the calendar system to move the event."
+  description = "Worker. Once the live check has passed, asks the calendar system to move the event."
   status      = "created"
 
   readmodel "reschedules_awaiting_calendar_update" {
-    question = "Which requested reschedules still need a calendar update?"
+    question = "Which verified reschedules still need a calendar update?"
     fields   = [field_type.meetings.meeting_id, field_type.meetings.new_slot_start, field_type.meetings.new_slot_end, field_type.meetings.calendar_event_id]
-    from     = [event.meetings.meeting_reschedule_requested, event.meetings.calendar_event_update_requested]
+    from     = [event.meetings.meeting_reschedule_requested, event.meetings.new_slot_verified, event.meetings.calendar_event_update_requested, event.meetings.meeting_moved_in_calendar, event.meetings.meeting_canceled]
     to       = [processor.calendar_update_requester]
   }
 
@@ -3585,6 +4562,10 @@ automation "request_calendar_event_update" {
     }
 
     given {
+      event = event.meetings.new_slot_verified
+    }
+
+    given {
       readmodel = readmodel.reschedules_awaiting_calendar_update
     }
 
@@ -3604,6 +4585,10 @@ automation "request_calendar_event_update" {
       event = event.meetings.meeting_reschedule_requested
     }
 
+    given {
+      event = event.meetings.new_slot_verified
+    }
+
     then {
       readmodel = readmodel.reschedules_awaiting_calendar_update
     }
@@ -3617,7 +4602,67 @@ automation "request_calendar_event_update" {
     }
 
     given {
+      event = event.meetings.new_slot_verified
+    }
+
+    given {
       event = event.meetings.calendar_event_update_requested
+    }
+
+    then {
+      expect_empty_list = true
+      readmodel         = readmodel.reschedules_awaiting_calendar_update
+    }
+  }
+
+  scenario "unchecked_reschedule_is_not_requested" {
+    case = "disappear"
+
+    given {
+      event = event.meetings.meeting_reschedule_requested
+    }
+
+    then {
+      expect_empty_list = true
+      readmodel         = readmodel.reschedules_awaiting_calendar_update
+    }
+  }
+
+  scenario "direct_move_stops_the_update" {
+    description = "The calendar wins, so the reschedule in progress is replaced."
+    case        = "disappear"
+
+    given {
+      event = event.meetings.meeting_reschedule_requested
+    }
+
+    given {
+      event = event.meetings.new_slot_verified
+    }
+
+    given {
+      event = event.meetings.meeting_moved_in_calendar
+    }
+
+    then {
+      expect_empty_list = true
+      readmodel         = readmodel.reschedules_awaiting_calendar_update
+    }
+  }
+
+  scenario "direct_deletion_stops_the_update" {
+    case = "disappear"
+
+    given {
+      event = event.meetings.meeting_reschedule_requested
+    }
+
+    given {
+      event = event.meetings.new_slot_verified
+    }
+
+    given {
+      event = event.meetings.meeting_canceled
     }
 
     then {
@@ -3688,13 +4733,13 @@ automation "complete_meeting_reschedule" {
 }
 
 automation "fail_meeting_reschedule" {
-  description = "Translation. The calendar system could not move the event, so the meeting keeps its original time."
+  description = "Translation. The live check found the host busy or could not be answered, or the calendar system could not move the event. The meeting keeps its original time and the participant can try again. There is no automatic retry."
   status      = "created"
 
   readmodel "failed_calendar_updates" {
-    question = "Which meetings could the calendar system not move?"
+    question = "Which reschedules failed their live check, or could the calendar system not move?"
     fields   = [field_type.meetings.meeting_id, field_type.meetings.failure_reason]
-    from     = [event.corporate_calendar.calendar_event_update_failed]
+    from     = [event.corporate_calendar.calendar_event_update_failed, event.corporate_calendar.host_slot_found_busy, event.corporate_calendar.availability_check_failed, event.meetings.reschedule_availability_check_requested]
     to       = [processor.calendar_update_failure_translator]
   }
 
@@ -3710,13 +4755,14 @@ automation "fail_meeting_reschedule" {
   }
 
   field_source {
-    inputs = [event.corporate_calendar.calendar_event_update_failed.field.scheduler_meeting_ref]
+    inputs = [event.corporate_calendar.calendar_event_update_failed.field.scheduler_meeting_ref, event.corporate_calendar.host_slot_found_busy.field.scheduler_meeting_ref, event.corporate_calendar.availability_check_failed.field.scheduler_meeting_ref]
     target = readmodel.failed_calendar_updates.field.meeting_id
   }
 
   field_source {
-    inputs = [event.corporate_calendar.calendar_event_update_failed.field.failure_code]
-    target = readmodel.failed_calendar_updates.field.failure_reason
+    description = "A busy answer gives 'This time is no longer available. Please choose another slot.' A failed check gives 'The host's availability cannot be verified right now. Please try again later.' A refused calendar change keeps its failure code."
+    inputs      = [event.corporate_calendar.calendar_event_update_failed.field.failure_code, event.corporate_calendar.host_slot_found_busy.field.scheduler_meeting_ref, event.corporate_calendar.availability_check_failed.field.failure_code]
+    target      = readmodel.failed_calendar_updates.field.failure_reason
   }
 
   scenario "update_failure_keeps_the_original_time" {
@@ -3750,16 +4796,200 @@ automation "fail_meeting_reschedule" {
       readmodel = readmodel.failed_calendar_updates
     }
   }
+
+  scenario "busy_host_keeps_the_original_time" {
+    case = "external_failure"
+
+    given {
+      event = event.meetings.reschedule_availability_check_requested
+    }
+
+    given {
+      event = event.corporate_calendar.host_slot_found_busy
+    }
+
+    when {
+      processor = processor.calendar_update_failure_translator
+    }
+
+    then {
+      event = event.meetings.meeting_reschedule_failed
+    }
+  }
+
+  scenario "unanswered_check_keeps_the_original_time" {
+    case = "external_failure"
+
+    given {
+      event = event.meetings.reschedule_availability_check_requested
+    }
+
+    given {
+      event = event.corporate_calendar.availability_check_failed
+    }
+
+    when {
+      processor = processor.calendar_update_failure_translator
+    }
+
+    then {
+      event = event.meetings.meeting_reschedule_failed
+    }
+  }
+}
+
+automation "apply_direct_calendar_move" {
+  description = "Translation. Someone moved the event directly in the calendar, and the meeting follows it. The calendar wins, so this replaces a reschedule in progress and takes the moved time even if it falls outside the host's rules."
+  status      = "created"
+
+  readmodel "direct_calendar_moves" {
+    question = "Which meetings were moved directly in the calendar?"
+    fields   = [field_type.meetings.meeting_id, field_type.meetings.new_slot_start, field_type.meetings.new_slot_end]
+    from     = [event.corporate_calendar.calendar_event_moved_directly]
+    to       = [processor.direct_move_translator]
+  }
+
+  processor "direct_move_translator" {
+    fields = [field_type.meetings.meeting_id, field_type.meetings.new_slot_start, field_type.meetings.new_slot_end]
+    to     = [command.record_meeting_moved]
+  }
+
+  command "record_meeting_moved" {
+    aggregate = aggregate.meetings.meeting
+    fields    = [field_type.meetings.meeting_id, field_type.meetings.new_slot_start, field_type.meetings.new_slot_end]
+    to        = [event.meetings.meeting_moved_in_calendar]
+  }
+
+  field_source {
+    inputs = [event.corporate_calendar.calendar_event_moved_directly.field.scheduler_meeting_ref]
+    target = readmodel.direct_calendar_moves.field.meeting_id
+  }
+
+  field_source {
+    inputs = [event.corporate_calendar.calendar_event_moved_directly.field.moved_start]
+    target = readmodel.direct_calendar_moves.field.new_slot_start
+  }
+
+  field_source {
+    inputs = [event.corporate_calendar.calendar_event_moved_directly.field.moved_end]
+    target = readmodel.direct_calendar_moves.field.new_slot_end
+  }
+
+  scenario "direct_move_reschedules_the_meeting" {
+    case = "happy_path"
+
+    given {
+      event = event.meetings.meeting_confirmed
+    }
+
+    given {
+      event = event.corporate_calendar.calendar_event_moved_directly
+    }
+
+    when {
+      processor = processor.direct_move_translator
+    }
+
+    then {
+      event = event.meetings.meeting_moved_in_calendar
+    }
+  }
+
+  scenario "direct_move_replaces_a_reschedule_in_progress" {
+    case = "variant"
+
+    given {
+      event = event.meetings.meeting_confirmed
+    }
+
+    given {
+      event = event.meetings.meeting_reschedule_requested
+    }
+
+    given {
+      event = event.corporate_calendar.calendar_event_moved_directly
+    }
+
+    when {
+      processor = processor.direct_move_translator
+    }
+
+    then {
+      event = event.meetings.meeting_moved_in_calendar
+    }
+  }
+
+  scenario "direct_move_during_a_cancellation_is_dropped" {
+    case = "state_violation"
+
+    given {
+      event = event.meetings.meeting_confirmed
+    }
+
+    given {
+      event = event.meetings.meeting_cancellation_requested
+    }
+
+    given {
+      event = event.corporate_calendar.calendar_event_moved_directly
+    }
+
+    when {
+      processor = processor.direct_move_translator
+    }
+
+    then {
+      expect_no_dispatch = true
+      command            = command.record_meeting_moved
+    }
+  }
+
+  scenario "direct_move_after_the_end_is_dropped" {
+    case = "state_violation"
+
+    given {
+      event = event.meetings.meeting_confirmed
+    }
+
+    given {
+      event = event.meetings.meeting_completed
+    }
+
+    given {
+      event = event.corporate_calendar.calendar_event_moved_directly
+    }
+
+    when {
+      processor = processor.direct_move_translator
+    }
+
+    then {
+      expect_no_dispatch = true
+      command            = command.record_meeting_moved
+    }
+  }
+
+  scenario "direct_move_is_listed" {
+    case = "appear"
+
+    given {
+      event = event.corporate_calendar.calendar_event_moved_directly
+    }
+
+    then {
+      readmodel = readmodel.direct_calendar_moves
+    }
+  }
 }
 
 automation "send_reschedule_notice" {
-  description = "Worker. Both participants are told about the new time."
+  description = "Worker. Both participants are told about the new time by email, also after a direct move in the calendar."
   status      = "created"
 
   readmodel "reschedule_notices_to_send" {
-    question = "Which completed reschedules have not yet been announced to both participants?"
+    question = "Which completed reschedules and direct calendar moves have not yet been announced to both participants?"
     fields   = [field_type.meetings.meeting_id, field_type.meetings.new_slot_start, field_type.meetings.participants]
-    from     = [event.meetings.meeting_reschedule_requested, event.meetings.meeting_rescheduled, event.meetings.reschedule_notice_sent]
+    from     = [event.meetings.meeting_slot_reserved, event.meetings.meeting_reschedule_requested, event.meetings.meeting_rescheduled, event.meetings.meeting_moved_in_calendar, event.meetings.reschedule_notice_sent]
     to       = [processor.reschedule_notifier]
   }
 
@@ -3832,6 +5062,26 @@ automation "send_reschedule_notice" {
     then {
       expect_empty_list = true
       readmodel         = readmodel.reschedule_notices_to_send
+    }
+  }
+
+  scenario "direct_move_is_announced" {
+    case = "variant"
+
+    given {
+      event = event.meetings.meeting_slot_reserved
+    }
+
+    given {
+      event = event.meetings.meeting_moved_in_calendar
+    }
+
+    when {
+      processor = processor.reschedule_notifier
+    }
+
+    then {
+      event = event.meetings.reschedule_notice_sent
     }
   }
 }
@@ -3975,7 +5225,7 @@ automation "request_calendar_event_deletion" {
   readmodel "cancellations_awaiting_calendar_deletion" {
     question = "Which requested cancellations still need the calendar event removed?"
     fields   = [field_type.meetings.meeting_id, field_type.meetings.calendar_event_id]
-    from     = [event.meetings.meeting_cancellation_requested, event.meetings.calendar_event_deletion_requested]
+    from     = [event.meetings.meeting_cancellation_requested, event.meetings.calendar_event_deletion_requested, event.meetings.meeting_canceled]
     to       = [processor.calendar_deletion_requester]
   }
 
@@ -4031,6 +5281,24 @@ automation "request_calendar_event_deletion" {
 
     given {
       event = event.meetings.calendar_event_deletion_requested
+    }
+
+    then {
+      expect_empty_list = true
+      readmodel         = readmodel.cancellations_awaiting_calendar_deletion
+    }
+  }
+
+  scenario "direct_deletion_stops_the_request" {
+    description = "The event is already gone from the calendar."
+    case        = "disappear"
+
+    given {
+      event = event.meetings.meeting_cancellation_requested
+    }
+
+    given {
+      event = event.meetings.meeting_canceled
     }
 
     then {
@@ -4165,14 +5433,123 @@ automation "fail_meeting_cancellation" {
   }
 }
 
+automation "apply_direct_calendar_deletion" {
+  description = "Translation. Someone deleted the event directly in the calendar, and the meeting counts as canceled. The calendar wins, so this also ends a reschedule or cancellation in progress."
+  status      = "created"
+
+  readmodel "direct_calendar_deletions" {
+    question = "Which meetings were deleted directly in the calendar?"
+    fields   = [field_type.meetings.meeting_id]
+    from     = [event.corporate_calendar.calendar_event_deleted_directly]
+    to       = [processor.direct_deletion_translator]
+  }
+
+  processor "direct_deletion_translator" {
+    fields = [field_type.meetings.meeting_id]
+    to     = [command.record_meeting_deleted]
+  }
+
+  command "record_meeting_deleted" {
+    aggregate = aggregate.meetings.meeting
+    fields    = [field_type.meetings.meeting_id]
+    to        = [event.meetings.meeting_canceled]
+  }
+
+  field_source {
+    inputs = [event.corporate_calendar.calendar_event_deleted_directly.field.scheduler_meeting_ref]
+    target = readmodel.direct_calendar_deletions.field.meeting_id
+  }
+
+  scenario "direct_deletion_cancels_the_meeting" {
+    case = "happy_path"
+
+    given {
+      event = event.meetings.meeting_confirmed
+    }
+
+    given {
+      event = event.corporate_calendar.calendar_event_deleted_directly
+    }
+
+    when {
+      processor = processor.direct_deletion_translator
+    }
+
+    then {
+      event = event.meetings.meeting_canceled
+    }
+  }
+
+  scenario "direct_deletion_ends_a_reschedule_in_progress" {
+    case = "variant"
+
+    given {
+      event = event.meetings.meeting_confirmed
+    }
+
+    given {
+      event = event.meetings.meeting_reschedule_requested
+    }
+
+    given {
+      event = event.corporate_calendar.calendar_event_deleted_directly
+    }
+
+    when {
+      processor = processor.direct_deletion_translator
+    }
+
+    then {
+      event = event.meetings.meeting_canceled
+    }
+  }
+
+  scenario "direct_deletion_after_the_end_is_dropped" {
+    case = "state_violation"
+
+    given {
+      event = event.meetings.meeting_confirmed
+    }
+
+    given {
+      event = event.meetings.meeting_completed
+    }
+
+    given {
+      event = event.corporate_calendar.calendar_event_deleted_directly
+    }
+
+    when {
+      processor = processor.direct_deletion_translator
+    }
+
+    then {
+      expect_no_dispatch = true
+      command            = command.record_meeting_deleted
+    }
+  }
+
+  scenario "direct_deletion_is_listed" {
+    case = "appear"
+
+    given {
+      event = event.corporate_calendar.calendar_event_deleted_directly
+    }
+
+    then {
+      readmodel = readmodel.direct_calendar_deletions
+    }
+  }
+}
+
 automation "send_cancellation_notice" {
-  description = "Worker. Both participants are told that the meeting is canceled."
+  description = "Worker. Both participants are told by email that the meeting is canceled, also after a direct deletion in the calendar."
   status      = "created"
 
   readmodel "cancellation_notices_to_send" {
     question = "Which canceled meetings have not yet been announced to both participants?"
     fields   = [field_type.meetings.meeting_id, field_type.meetings.participants]
-    from     = [event.meetings.meeting_cancellation_requested, event.meetings.meeting_canceled, event.meetings.cancellation_notice_sent]
+    from     = [event.meetings.meeting_slot_reserved, event.meetings.meeting_cancellation_requested, event.meetings.meeting_canceled, event.meetings.cancellation_notice_sent]
     to       = [processor.cancellation_notifier]
   }
 
@@ -4247,10 +5624,30 @@ automation "send_cancellation_notice" {
       readmodel         = readmodel.cancellation_notices_to_send
     }
   }
+
+  scenario "direct_deletion_is_announced" {
+    case = "variant"
+
+    given {
+      event = event.meetings.meeting_slot_reserved
+    }
+
+    given {
+      event = event.meetings.meeting_canceled
+    }
+
+    when {
+      processor = processor.cancellation_notifier
+    }
+
+    then {
+      event = event.meetings.cancellation_notice_sent
+    }
+  }
 }
 
 automation "complete_finished_meeting" {
-  description = "Worker. Trigger: a confirmed meeting's end time passes."
+  description = "Worker. Trigger: a confirmed meeting's end time passes. There is no grace period."
   status      = "created"
 
   readmodel "meetings_to_complete" {
@@ -4261,6 +5658,7 @@ automation "complete_finished_meeting" {
       event.meetings.meeting_confirmed,
       event.meetings.meeting_reschedule_requested,
       event.meetings.meeting_rescheduled,
+      event.meetings.meeting_moved_in_calendar,
       event.meetings.meeting_canceled,
       event.meetings.meeting_completed,
     ]
@@ -4279,8 +5677,8 @@ automation "complete_finished_meeting" {
   }
 
   field_source {
-    description = "The latest of the meeting's time facts decides: the reserved slot, then the slot of the latest completed reschedule."
-    inputs      = [event.meetings.meeting_slot_reserved.field.slot_end, event.meetings.meeting_reschedule_requested.field.new_slot_end]
+    description = "The latest of the meeting's time facts decides: the reserved slot, then the slot of the latest completed reschedule or direct calendar move."
+    inputs      = [event.meetings.meeting_slot_reserved.field.slot_end, event.meetings.meeting_reschedule_requested.field.new_slot_end, event.meetings.meeting_moved_in_calendar.field.new_slot_end]
     target      = readmodel.meetings_to_complete.field.slot_end
   }
 
@@ -4365,11 +5763,36 @@ automation "complete_finished_meeting" {
       readmodel         = readmodel.meetings_to_complete
     }
   }
+
+  scenario "directly_moved_meeting_waits_for_its_new_end" {
+    case = "change"
+
+    given {
+      event = event.meetings.meeting_slot_reserved
+    }
+
+    given {
+      event = event.meetings.meeting_confirmed
+    }
+
+    given {
+      event = event.meetings.meeting_moved_in_calendar
+    }
+
+    then {
+      readmodel = readmodel.meetings_to_complete
+    }
+  }
 }
 
 evidence_source "epic" {
   kind     = "document"
   location = "EPIC: Self-Service Meeting Scheduling for Employees, supplied in the modeling request"
+}
+
+evidence_source "model_owner_answers" {
+  kind     = "person"
+  location = "Answers from the model owner in the Claude Code session of 2026-11-09"
 }
 
 evidence "no_double_booking" {
@@ -4449,6 +5872,7 @@ decision "status_lists_read_the_meeting_lifecycle" {
 }
 
 hotspot "free_busy_freshness" {
+  status   = "resolved"
   kind     = "assumption"
   category = "rule"
   question = "Is the last reported free/busy data fresh enough to count as revalidating immediately before confirming, or must the scheduler query the calendar live at submission?"
@@ -4460,6 +5884,7 @@ hotspot "free_busy_freshness" {
 }
 
 hotspot "notification_channel" {
+  status   = "resolved"
   category = "action"
   question = "Which channel carries the confirmation, reschedule, and cancellation notices: email, corporate chat, or only the calendar invitation and its updates?"
   options  = ["Email", "Corporate chat", "Only the calendar invitation and its updates"]
@@ -4467,6 +5892,7 @@ hotspot "notification_channel" {
 }
 
 hotspot "failed_change_recovery" {
+  status   = "resolved"
   kind     = "assumption"
   category = "rule"
   question = "When the calendar refuses a reschedule or a cancellation, should the meeting keep its current state with no automatic retry?"
@@ -4478,6 +5904,7 @@ hotspot "failed_change_recovery" {
 }
 
 hotspot "out_of_band_calendar_changes" {
+  status   = "resolved"
   category = "next"
   question = "What happens when a participant deletes or moves the calendar event directly in the calendar system?"
   options = [
@@ -4488,6 +5915,7 @@ hotspot "out_of_band_calendar_changes" {
 }
 
 hotspot "booker_calendar_conflicts" {
+  status   = "resolved"
   kind     = "assumption"
   category = "rule"
   question = "Do available slots consider only the host's calendar? The epic's goal mentions a mutually convenient time, but bookers need no setup."
@@ -4499,6 +5927,7 @@ hotspot "booker_calendar_conflicts" {
 }
 
 hotspot "authorized_bookers" {
+  status   = "resolved"
   kind     = "assumption"
   category = "who"
   question = "Does 'authorized employees' mean every authenticated employee, or can a host or the organization restrict who may use a link?"
@@ -4507,6 +5936,7 @@ hotspot "authorized_bookers" {
 }
 
 hotspot "self_booking" {
+  status   = "resolved"
   category = "rule"
   question = "May a host book a slot through their own link?"
   options  = ["No, refuse it.", "Yes, allow it."]
@@ -4514,6 +5944,7 @@ hotspot "self_booking" {
 }
 
 hotspot "changes_and_existing_meetings" {
+  status   = "resolved"
   kind     = "assumption"
   category = "rule"
   question = "Do edits to a meeting type or availability schedule leave existing meetings unchanged? The model assumes that meetings keep the values captured at booking."
@@ -4525,6 +5956,7 @@ hotspot "changes_and_existing_meetings" {
 }
 
 hotspot "delete_with_future_meetings" {
+  status   = "resolved"
   category = "rule"
   question = "When a host deletes a meeting type that has upcoming meetings, what happens to those meetings?"
   options = [
@@ -4535,6 +5967,7 @@ hotspot "delete_with_future_meetings" {
 }
 
 hotspot "limits_scope" {
+  status   = "resolved"
   kind     = "assumption"
   category = "data"
   question = "Are the booking window, minimum notice, and buffers set per availability schedule? The model assumes so, since meeting types select a schedule."
@@ -4543,6 +5976,7 @@ hotspot "limits_scope" {
 }
 
 hotspot "exception_removal" {
+  status   = "resolved"
   category = "action"
   question = "Can a host remove or change a date exception after adding it? The epic only states that hosts can create them."
   options  = ["Yes, add remove and change actions.", "No, a newer exception for the date replaces the older one."]
@@ -4550,6 +5984,7 @@ hotspot "exception_removal" {
 }
 
 hotspot "completion_time" {
+  status   = "resolved"
   kind     = "assumption"
   category = "time"
   question = "Does a meeting become completed exactly when its end time passes? The epic only says that completed meetings are distinct."
@@ -4558,9 +5993,198 @@ hotspot "completion_time" {
 }
 
 hotspot "error_wording" {
+  status   = "resolved"
   kind     = "assumption"
   category = "example"
   question = "The epic asks for clear errors but gives no wording. Are the drafted messages acceptable, or does a content owner need to supply them?"
   options  = ["Accept the drafted wording.", "A content owner supplies the final wording."]
   on       = workflow.reserve_meeting_slot
+}
+
+decision "answer_limits_scope" {
+  statement = "The booking window, minimum notice, and buffers are set per availability schedule."
+  reason    = "A meeting type gets its limits from the schedule it uses, so a host has fewer settings."
+  on        = workflow.set_booking_limits
+}
+
+evidence "answer_limits_scope" {
+  certainty = "stated"
+  location  = "Answer to hotspot limits_scope"
+  source    = evidence_source.model_owner_answers
+  on        = hotspot.limits_scope
+}
+
+decision "answer_exception_removal" {
+  statement = "A host can change or remove a date exception after adding it."
+  reason    = "A canceled day off must be able to open up again."
+  on        = workflow.add_date_exception
+}
+
+evidence "answer_exception_removal" {
+  certainty = "stated"
+  location  = "Answer to hotspot exception_removal"
+  source    = evidence_source.model_owner_answers
+  on        = hotspot.exception_removal
+}
+
+decision "answer_changes_and_existing_meetings" {
+  statement = "Edits to a meeting type or an availability schedule leave booked meetings unchanged and affect only new bookings."
+  reason    = "An agreed meeting must not move or need attention because of a settings edit."
+  on        = workflow.edit_meeting_type
+}
+
+evidence "answer_changes_and_existing_meetings" {
+  certainty = "stated"
+  location  = "Answer to hotspot changes_and_existing_meetings"
+  source    = evidence_source.model_owner_answers
+  on        = hotspot.changes_and_existing_meetings
+}
+
+decision "answer_delete_with_future_meetings" {
+  statement = "Deleting a meeting type leaves its upcoming meetings in place. They can still be rescheduled or canceled, and only new bookings stop. A disabled meeting type behaves the same way."
+  reason    = "The participants have already agreed on those meetings."
+  on        = command.delete_meeting_type.delete_meeting_type
+}
+
+evidence "answer_delete_with_future_meetings" {
+  certainty = "stated"
+  location  = "Answer to hotspot delete_with_future_meetings"
+  source    = evidence_source.model_owner_answers
+  on        = hotspot.delete_with_future_meetings
+}
+
+decision "answer_authorized_bookers" {
+  statement = "Every employee who has signed in can use any booking link."
+  reason    = "The MVP needs no extra permission setup."
+  on        = actor.meeting_booker
+}
+
+evidence "answer_authorized_bookers" {
+  certainty = "stated"
+  location  = "Answer to hotspot authorized_bookers"
+  source    = evidence_source.model_owner_answers
+  on        = hotspot.authorized_bookers
+}
+
+decision "answer_self_booking" {
+  statement = "A host cannot book a slot through their own link."
+  reason    = "A meeting needs two people."
+  on        = command.reserve_meeting_slot.reserve_meeting_slot
+}
+
+evidence "answer_self_booking" {
+  certainty = "stated"
+  location  = "Answer to hotspot self_booking"
+  source    = evidence_source.model_owner_answers
+  on        = hotspot.self_booking
+}
+
+decision "answer_booker_calendar_conflicts" {
+  statement = "Available slots consider only the host's calendar. The booker judges their own availability."
+  reason    = "Bookers need no setup, and the scheduler needs no access to a booker's calendar."
+  on        = workflow.view_available_slots
+}
+
+evidence "answer_booker_calendar_conflicts" {
+  certainty = "stated"
+  location  = "Answer to hotspot booker_calendar_conflicts"
+  source    = evidence_source.model_owner_answers
+  on        = hotspot.booker_calendar_conflicts
+}
+
+decision "answer_free_busy_freshness" {
+  statement = "The scheduler asks the host's calendar live before it confirms a booking. The slot is held first, the live check follows, and the calendar event is created only if the host is free."
+  reason    = "Calendar systems usually accept an overlapping event, so the calendar's outcome cannot catch a clash. Holding the slot first means that a concurrent booking cannot take it during the check."
+  on        = command.reserve_meeting_slot.reserve_meeting_slot
+}
+
+evidence "answer_free_busy_freshness" {
+  certainty = "stated"
+  location  = "Answer to hotspot free_busy_freshness"
+  source    = evidence_source.model_owner_answers
+  on        = hotspot.free_busy_freshness
+}
+
+decision "answer_notification_channel" {
+  statement = "Confirmation, reschedule, and cancellation notices go out by email, through a company mail sender."
+  reason    = "Everyone has email, and a notice can say why something changed."
+  on        = workflow.send_booking_confirmation
+}
+
+evidence "answer_notification_channel" {
+  certainty = "stated"
+  location  = "Answer to hotspot notification_channel"
+  source    = evidence_source.model_owner_answers
+  on        = hotspot.notification_channel
+}
+
+decision "answer_failed_change_recovery" {
+  statement = "When a reschedule or cancellation is refused, the meeting keeps its current state, the failure is shown, and the participant can try again. There is no automatic retry."
+  reason    = "Nobody is left unsure of the current state of the meeting."
+  on        = workflow.fail_meeting_reschedule
+}
+
+evidence "answer_failed_change_recovery" {
+  certainty = "stated"
+  location  = "Answer to hotspot failed_change_recovery"
+  source    = evidence_source.model_owner_answers
+  on        = hotspot.failed_change_recovery
+}
+
+decision "answer_out_of_band_calendar_changes" {
+  statement = "The scheduler follows the calendar. Deleting the meeting's event directly in the host's calendar counts as a cancellation, and moving it counts as a reschedule. Both participants are notified."
+  reason    = "The epic requires the application and the calendar to stay consistent."
+  on        = aggregate.meetings.meeting
+}
+
+evidence "answer_out_of_band_calendar_changes" {
+  certainty = "stated"
+  location  = "Answer to hotspot out_of_band_calendar_changes"
+  source    = evidence_source.model_owner_answers
+  on        = hotspot.out_of_band_calendar_changes
+}
+
+decision "answer_completion_time" {
+  statement = "A meeting becomes completed when its end time passes, with no grace period."
+  reason    = "The rule is simple and predictable."
+  on        = workflow.complete_finished_meeting
+}
+
+evidence "answer_completion_time" {
+  certainty = "stated"
+  location  = "Answer to hotspot completion_time"
+  source    = evidence_source.model_owner_answers
+  on        = hotspot.completion_time
+}
+
+decision "answer_error_wording" {
+  statement = "The drafted error messages are the agreed MVP wording."
+  reason    = "The epic gives no wording, and a content owner can refine the messages later as a normal change."
+  on        = workflow.reserve_meeting_slot
+}
+
+evidence "answer_error_wording" {
+  certainty = "stated"
+  location  = "Answer to hotspot error_wording"
+  source    = evidence_source.model_owner_answers
+  on        = hotspot.error_wording
+}
+
+decision "live_check_covers_reschedules" {
+  statement = "A new time picked during a reschedule gets the same live check as a booking."
+  reason    = "The model owner chose this. A new time is treated like a new booking."
+  on        = workflow.request_reschedule_availability_check
+}
+
+decision "calendar_wins_over_changes_in_progress" {
+  statement = "A direct deletion always cancels the meeting. A direct move replaces a reschedule in progress. A direct move during a cancellation is dropped. A late calendar answer to a replaced change has no effect."
+  reason    = "The model owner chose this, so the two systems disagree for as short a time as possible."
+  on        = workflow.apply_direct_calendar_move
+}
+
+decision "live_check_answers_read_their_request" {
+  kind      = "accepted_debt"
+  signal    = "EM403"
+  statement = "The lists that translate live check answers read the answer and the request that it belongs to."
+  reason    = "The calendar system gives the same answer for a booking and a reschedule. The request tells which kind of check the answer belongs to."
 }
