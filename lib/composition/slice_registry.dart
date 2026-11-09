@@ -11,6 +11,7 @@ import '../slices/add_date_exception/module.dart';
 import '../slices/change_date_exception/module.dart';
 import '../slices/remove_date_exception/module.dart';
 import '../slices/my_availability_schedules/module.dart';
+import '../slices/create_meeting_type/module.dart';
 import 'vertical_slice.dart';
 
 /// Every slice of the model, in board order. Each new slice adds its import and its `module.dart` instance here.
@@ -28,4 +29,5 @@ const List<VerticalSlice> verticalSlices = [
   ChangeDateExceptionSlice(),
   RemoveDateExceptionSlice(),
   MyAvailabilitySchedulesSlice(),
+  CreateMeetingTypeSlice(),
 ];
