@@ -6,6 +6,7 @@ import '../slices/record_calendar_connection_failure/module.dart';
 import '../slices/register_employee_on_first_sign_in/module.dart';
 import '../slices/start_calendar_connection/module.dart';
 import '../slices/set_weekly_hours/module.dart';
+import '../slices/set_booking_limits/module.dart';
 import '../slices/add_date_exception/module.dart';
 import '../slices/change_date_exception/module.dart';
 import '../slices/remove_date_exception/module.dart';
@@ -21,6 +22,7 @@ const List<VerticalSlice> verticalSlices = [
   RecordHostBusyTimesSlice(),
   CreateAvailabilityScheduleSlice(),
   SetWeeklyHoursSlice(),
+  SetBookingLimitsSlice(),
   AddDateExceptionSlice(),
   ChangeDateExceptionSlice(),
   RemoveDateExceptionSlice(),
