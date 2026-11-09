@@ -3,6 +3,7 @@ library;
 
 export '../event_contract.dart';
 export 'event_tags.dart';
+export 'availability.dart';
 export 'events.dart';
 export 'lifecycles.dart';
 export 'serialization.dart';
