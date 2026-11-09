@@ -1,4 +1,5 @@
 import '../slices/record_calendar_connected/module.dart';
+import '../slices/record_calendar_connection_failure/module.dart';
 import '../slices/register_employee_on_first_sign_in/module.dart';
 import '../slices/start_calendar_connection/module.dart';
 import 'vertical_slice.dart';
@@ -8,4 +9,5 @@ const List<VerticalSlice> verticalSlices = [
   RegisterEmployeeOnFirstSignInSlice(),
   StartCalendarConnectionSlice(),
   RecordCalendarConnectedSlice(),
+  RecordCalendarConnectionFailureSlice(),
 ];
