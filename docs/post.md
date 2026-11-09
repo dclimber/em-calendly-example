@@ -11,3 +11,5 @@ Use a custom backend package or framework for the server part of your project? (
 Created project em_calendly_example! In order to get started, run the following commands:
 cd em_calendly_example
 jaspr serve
+
+jaspr install-skills --agent general
