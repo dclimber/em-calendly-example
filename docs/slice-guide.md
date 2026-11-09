@@ -227,8 +227,12 @@ void register(SliceRegistrar registrar, AppServices services) {
 `eventTypes` is exactly `readmodel.from`. Use `repository.load(key)` and `repository.findWhere({...})` to read.
 A read model can depend on "now" (for example available slots): store the inputs in the document, and compute
 the time-dependent part when the page renders, with `services.clock.now()`, in a pure function that the tests
-call with fixed instants. Time zones: `package:timezone` (`initializeTimeZones()` from
-`package:timezone/data/latest.dart`, then `getLocation('Europe/Berlin')` and `TZDateTime`).
+call with fixed instants.
+
+The slot calculation of the model already exists in `lib/bounded_contexts/host_setup/availability.dart`
+(exported by `host_setup/api.dart`): `availableSlots(...)` lists the bookable slots and `checkSlot(...)`
+revalidates one chosen slot (`SlotCheck.held`, `.unverified`, `.busy`, `.outsideRules`, `.available`). Fold the
+events into `AvailabilityRules`, busy ranges, and held ranges, then call these functions; never reimplement them.
 
 Views are eventually consistent: a page that a form redirects to can render before the subscription has run.
 Tell the person what is happening ("Your booking is being confirmed") instead of failing on a missing document.
