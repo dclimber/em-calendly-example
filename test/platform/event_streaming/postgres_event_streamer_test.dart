@@ -23,8 +23,8 @@ void main() {
     late PostgresEventStore store;
     late PostgresEventStreamer streamer;
     late String name;
-    setUpAll(() {
-      db = testDatabase();
+    setUpAll(() async {
+      db = await testDatabase();
       store = PostgresEventStore(db, catalog);
     });
     setUp(() {

@@ -11,7 +11,7 @@ import 'view_state_store_contract.dart';
 void main() {
   group('PostgresViewStateStore', () {
     late Pool<void> db;
-    setUpAll(() => db = testDatabase());
+    setUpAll(() async => db = await testDatabase());
     viewStateStoreContract(() => PostgresViewStateStore(db));
   });
 }

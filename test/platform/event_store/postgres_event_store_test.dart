@@ -17,7 +17,7 @@ void main() {
   group('PostgresEventStore', () {
     final catalog = buildEventCatalog();
     late Pool<void> db;
-    setUpAll(() => db = testDatabase());
+    setUpAll(() async => db = await testDatabase());
 
     eventStoreContract(() => PostgresEventStore(db, catalog));
 
