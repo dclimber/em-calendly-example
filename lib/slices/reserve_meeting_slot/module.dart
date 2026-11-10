@@ -20,6 +20,7 @@ final class ReserveMeetingSlotSlice implements VerticalSlice {
         reviewBookingRoute,
         title: 'Review your booking',
         builder: (request) => ReviewBookingPage(
+          eventStore: services.eventStore,
           meetingTypeId: request.param('meetingTypeId'),
           start: DateTime.tryParse(request.query['start'] ?? '')?.toUtc(),
           end: DateTime.tryParse(request.query['end'] ?? '')?.toUtc(),

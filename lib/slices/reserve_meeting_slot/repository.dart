@@ -8,7 +8,8 @@ import 'command.dart';
 /// Reads the history that a booking decides on, and appends the reservation only if none of it changed.
 ///
 /// The `hostId` query makes every reservation of one host conflict with every other, so two bookings of one host
-/// serialize, whatever their meeting type (the model's `no_overlap_spans_the_host` decision).
+/// serialize, whatever their meeting type (the model's `no_overlap_spans_the_host` decision). The meeting events
+/// that release or move a held slot carry no `hostId`; they are found through the stream tag of their meeting.
 final class ReserveMeetingSlotEventRepository
     extends ConsistentEventRepository<ReserveMeetingSlotCommand, DomainEvent> {
   ReserveMeetingSlotEventRepository(super.store);
@@ -47,6 +48,12 @@ final class ReserveMeetingSlotEventRepository
         HostBusyTimesRecordedEvent,
         MeetingSlotReservedEvent,
         MeetingRescheduleRequestedEvent,
+        MeetingRescheduleFailedEvent,
+        MeetingRescheduledEvent,
+        MeetingMovedInCalendarEvent,
+        MeetingBookingFailedEvent,
+        MeetingCanceledEvent,
+        MeetingCompletedEvent,
       ],
     ),
     (tag: 'employeeId', value: command.hostId.value, eventTypes: const [EmployeeRegisteredEvent]),

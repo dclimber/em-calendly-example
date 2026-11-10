@@ -39,7 +39,8 @@ final class BookableMeetingType {
 }
 
 /// One meeting of the host that holds time: its slot, and a requested new slot while a reschedule is pending.
-typedef HeldSlot = ({({DateTime start, DateTime end}) current, ({DateTime start, DateTime end})? pending});
+/// [current] is null when only a reschedule was requested, so the requested slot is held before any reservation.
+typedef HeldSlot = ({({DateTime start, DateTime end})? current, ({DateTime start, DateTime end})? pending});
 
 /// The state that `reserve_meeting_slot` decides on, folded from the events of the meeting type, its schedule, and
 /// its host.

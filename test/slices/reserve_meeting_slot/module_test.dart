@@ -96,6 +96,21 @@ void main() {
     expect(await _reservations(t), hasLength(1));
   });
 
+  test('a slot whose booking failed is released and can be booked again', () async {
+    await _book(t, start: _slotStart, end: _slotEnd);
+    final meetingId = (await _reservations(t)).single.meetingId;
+    await t.given([
+      MeetingBookingFailedEvent(meetingId: meetingId, failureReason: FailureReason('The calendar rejected the event')),
+    ]);
+    await t.drain();
+
+    final response = await _book(t, start: _slotStart, end: _slotEnd, as: _carol);
+
+    expect(response.statusCode, 303);
+    expect(response.location, startsWith('/bookings/'));
+    expect(await _reservations(t), hasLength(2));
+  });
+
   test('a host cannot book their own link', () async {
     final response = await _book(t, start: _slotStart, end: _slotEnd, as: alice);
 

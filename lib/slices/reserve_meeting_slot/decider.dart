@@ -23,7 +23,7 @@ final reserveMeetingSlotDecider = Decider<ReserveMeetingSlotCommand, ReserveMeet
       now: command.now,
       busy: state.busy,
       held: [
-        for (final h in state.held.values) ...[h.current, ?h.pending],
+        for (final h in state.held.values) ...[?h.current, ?h.pending],
       ],
       calendarFailed: state.calendarFailed,
     );
@@ -138,17 +138,26 @@ final reserveMeetingSlotDecider = Decider<ReserveMeetingSlotCommand, ReserveMeet
       hostName: employeeName.value,
       hostEmail: employeeEmail.value,
     ),
-    MeetingSlotReservedEvent(:final meetingId, :final slotStart, :final slotEnd) => state.copyWith(
-      held: {
-        ...state.held,
-        meetingId.value: (current: (start: slotStart.value, end: slotEnd.value), pending: null),
-      },
+    MeetingSlotReservedEvent(:final meetingId, :final slotStart, :final slotEnd) => _withHold(
+      state,
+      meetingId.value,
+      (current: (start: slotStart.value, end: slotEnd.value), pending: null),
     ),
     MeetingRescheduleRequestedEvent(:final meetingId, :final newSlotStart, :final newSlotEnd) => _withPending(
       state,
       meetingId.value,
       (start: newSlotStart.value, end: newSlotEnd.value),
     ),
+    MeetingRescheduleFailedEvent(:final meetingId) => _withPending(state, meetingId.value, null),
+    MeetingRescheduledEvent(:final meetingId) => _settled(state, meetingId.value),
+    MeetingMovedInCalendarEvent(:final meetingId, :final newSlotStart, :final newSlotEnd) => _withHold(
+      state,
+      meetingId.value,
+      (current: (start: newSlotStart.value, end: newSlotEnd.value), pending: null),
+    ),
+    MeetingBookingFailedEvent(:final meetingId) => _released(state, meetingId.value),
+    MeetingCanceledEvent(:final meetingId) => _released(state, meetingId.value),
+    MeetingCompletedEvent(:final meetingId) => _released(state, meetingId.value),
     _ => state,
   },
 );
@@ -169,15 +178,31 @@ ReserveMeetingSlotState _withoutException(ReserveMeetingSlotState state, DateTim
   );
 }
 
+ReserveMeetingSlotState _withHold(ReserveMeetingSlotState state, String meetingId, HeldSlot hold) =>
+    state.copyWith(held: {...state.held, meetingId: hold});
+
+/// Sets the pending slot of [meetingId] to [pending] (null clears it). A pending slot holds time even before the
+/// meeting holds a current slot.
 ReserveMeetingSlotState _withPending(
   ReserveMeetingSlotState state,
   String meetingId,
-  ({DateTime start, DateTime end}) pending,
+  ({DateTime start, DateTime end})? pending,
 ) {
   final hold = state.held[meetingId];
-  if (hold == null) return state;
-  return state.copyWith(held: {...state.held, meetingId: (current: hold.current, pending: pending)});
+  if (hold == null && pending == null) return state;
+  return _withHold(state, meetingId, (current: hold?.current, pending: pending));
 }
+
+/// A reschedule was completed: the pending slot becomes the current slot.
+ReserveMeetingSlotState _settled(ReserveMeetingSlotState state, String meetingId) {
+  final hold = state.held[meetingId];
+  if (hold?.pending == null) return state;
+  return _withHold(state, meetingId, (current: hold!.pending, pending: null));
+}
+
+/// The meeting no longer holds time.
+ReserveMeetingSlotState _released(ReserveMeetingSlotState state, String meetingId) =>
+    state.copyWith(held: {...state.held}..remove(meetingId));
 
 DateTime _dayKey(DateTime date) => DateTime.utc(date.year, date.month, date.day);
 
