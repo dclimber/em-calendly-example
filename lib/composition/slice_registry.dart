@@ -24,6 +24,7 @@ import '../slices/edit_meeting_type/module.dart';
 import '../slices/disable_meeting_type/module.dart';
 import '../slices/enable_meeting_type/module.dart';
 import '../slices/delete_meeting_type/module.dart';
+import '../slices/booking_outcome/module.dart';
 import 'vertical_slice.dart';
 
 /// Every slice of the model, in board order. Each new slice adds its import and its `module.dart` instance here.
@@ -54,4 +55,5 @@ const List<VerticalSlice> verticalSlices = [
   RequestCalendarEventSlice(),
   ConfirmBookedMeetingSlice(),
   FailBookingSlice(),
+  BookingOutcomeSlice(),
 ];
