@@ -11,6 +11,8 @@ final _host = HostId('alice-employee-id');
 final _booker = BookerId('carol-employee-id');
 final _stranger = RequestedBy('dave-employee-id');
 final _schedule = ScheduleId('schedule-1');
+final _otherSchedule = ScheduleId('schedule-2');
+final _meetingType = MeetingTypeId('meeting-type-1');
 final _meeting = MeetingId('meeting-1');
 final _other = MeetingId('meeting-2');
 final _now = DateTime.utc(2027, 3, 16, 8);
@@ -67,12 +69,15 @@ final _confirmed = <DomainEvent>[
 
 RequestMeetingRescheduleCommand _request({
   MeetingId? meetingId,
+  ScheduleId? scheduleId,
   String? requestedBy,
   DateTime? start,
   DateTime? end,
 }) => RequestMeetingRescheduleCommand(
   meetingId: meetingId ?? _meeting,
   hostId: _host,
+  meetingTypeId: _meetingType,
+  scheduleId: scheduleId ?? _schedule,
   requestedBy: RequestedBy(requestedBy ?? _booker.value),
   newSlotStart: start ?? _newStart,
   newSlotEnd: end ?? _newEnd,
@@ -181,6 +186,34 @@ void main() {
       ];
 
       await expectLater(_decide(_request(), history), throwsA(isA<SlotUnavailableError>()));
+    });
+
+    test('the meeting type schedule decides, not another schedule of the host', () async {
+      // The meeting type uses schedule A (Monday 09:00 to 10:30). Schedule B opens Monday 14:00 to 15:00 only.
+      final history = [
+        AvailabilityScheduleCreatedEvent(
+          scheduleId: _otherSchedule,
+          hostId: _host,
+          scheduleName: ScheduleName('Afternoons'),
+          timeZone: TimeZone('UTC'),
+        ),
+        WeeklyHoursSetEvent(
+          scheduleId: _otherSchedule,
+          weeklyHours: WeeklyHours([WeeklyHoursEntry(weekday: 'Monday', startTime: '14:00', endTime: '15:00')]),
+        ),
+        ..._confirmed,
+      ];
+
+      await expectLater(
+        _decide(
+          _request(start: DateTime.utc(2027, 3, 22, 14), end: DateTime.utc(2027, 3, 22, 14, 30)),
+          history,
+        ),
+        throwsA(isA<SlotOutsideRulesError>()),
+      );
+
+      final emitted = await _decide(_request(), history);
+      expect(emitted.single, isA<MeetingRescheduleRequestedEvent>());
     });
 
     test('a new slot outside the host rules is refused', () async {

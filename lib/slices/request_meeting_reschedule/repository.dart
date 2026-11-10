@@ -4,7 +4,7 @@ import '../../platform/event_store/consistent_event_repository.dart';
 import '../../platform/event_store/event_store.dart';
 import 'command.dart';
 
-/// The meeting events that the decision folds, and the host events that hold its schedule and calendar state.
+/// The meeting events that the decision folds. The schedule and calendar events are read by their own tags.
 const _meetingEventTypes = [
   MeetingSlotReservedEvent,
   MeetingConfirmedEvent,
@@ -27,15 +27,21 @@ final class RequestMeetingRescheduleEventRepository
   List<EventQuery> queriesFor(RequestMeetingRescheduleCommand command) => [
     (tag: 'meetingId', value: command.meetingId.value, eventTypes: _meetingEventTypes),
     (
-      tag: 'hostId',
-      value: command.hostId.value,
-      eventTypes: [
+      tag: 'scheduleId',
+      value: command.scheduleId.value,
+      eventTypes: const [
         AvailabilityScheduleCreatedEvent,
         WeeklyHoursSetEvent,
         DateExceptionAddedEvent,
         DateExceptionChangedEvent,
         DateExceptionRemovedEvent,
         BookingLimitsSetEvent,
+      ],
+    ),
+    (
+      tag: 'hostId',
+      value: command.hostId.value,
+      eventTypes: const [
         CalendarConnectedEvent,
         CalendarConnectionFailedEvent,
         HostBusyTimesRecordedEvent,

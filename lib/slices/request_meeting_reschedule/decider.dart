@@ -38,7 +38,7 @@ final requestMeetingRescheduleDecider = Decider<RequestMeetingRescheduleCommand,
     if (calendarEventId == null) throw StateError('A confirmed meeting has a calendar event.');
 
     final check = checkSlot(
-      rules: state.schedule?.toRules() ?? const AvailabilityRules(),
+      rules: state.schedules[command.scheduleId.value]?.toRules() ?? const AvailabilityRules(),
       slot: (start: command.newSlotStart, end: command.newSlotEnd),
       duration: booking.duration,
       now: command.now,
@@ -68,31 +68,54 @@ final requestMeetingRescheduleDecider = Decider<RequestMeetingRescheduleCommand,
     );
   },
   evolve: (state, event) => switch (event) {
-    AvailabilityScheduleCreatedEvent(:final timeZone) => state.copyWith(
-      schedule: ScheduleRules(timeZone: timeZone.value),
+    AvailabilityScheduleCreatedEvent(:final scheduleId, :final timeZone) => state.copyWith(
+      schedules: {
+        ...state.schedules,
+        scheduleId.value: ScheduleRules(timeZone: timeZone.value),
+      },
     ),
-    WeeklyHoursSetEvent(:final weeklyHours) => state.copyWith(
-      schedule: state.schedule?.copyWith(weeklyHours: [...weeklyHours.items]),
-    ),
-    DateExceptionAddedEvent(:final exceptionDate, :final exceptionHours) => _withException(
+    WeeklyHoursSetEvent(:final scheduleId, :final weeklyHours) => _withSchedule(
       state,
-      exceptionDate.value,
-      [...exceptionHours.items],
+      scheduleId.value,
+      (schedule) => schedule.copyWith(weeklyHours: [...weeklyHours.items]),
     ),
-    DateExceptionChangedEvent(:final exceptionDate, :final exceptionHours) => _withException(
+    DateExceptionAddedEvent(:final scheduleId, :final exceptionDate, :final exceptionHours) => _withSchedule(
       state,
-      exceptionDate.value,
-      [...exceptionHours.items],
+      scheduleId.value,
+      (schedule) => schedule.copyWith(
+        dateExceptions: {
+          ...schedule.dateExceptions,
+          _dayKey(exceptionDate.value): [...exceptionHours.items],
+        },
+      ),
     ),
-    DateExceptionRemovedEvent(:final exceptionDate) => _withoutException(state, exceptionDate.value),
+    DateExceptionChangedEvent(:final scheduleId, :final exceptionDate, :final exceptionHours) => _withSchedule(
+      state,
+      scheduleId.value,
+      (schedule) => schedule.copyWith(
+        dateExceptions: {
+          ...schedule.dateExceptions,
+          _dayKey(exceptionDate.value): [...exceptionHours.items],
+        },
+      ),
+    ),
+    DateExceptionRemovedEvent(:final scheduleId, :final exceptionDate) => _withSchedule(
+      state,
+      scheduleId.value,
+      (schedule) =>
+          schedule.copyWith(dateExceptions: {...schedule.dateExceptions}..remove(_dayKey(exceptionDate.value))),
+    ),
     BookingLimitsSetEvent(
+      :final scheduleId,
       :final bookingWindowDays,
       :final minimumNoticeMinutes,
       :final bufferBeforeMinutes,
       :final bufferAfterMinutes,
     ) =>
-      state.copyWith(
-        schedule: state.schedule?.copyWith(
+      _withSchedule(
+        state,
+        scheduleId.value,
+        (schedule) => schedule.copyWith(
           bookingWindowDays: bookingWindowDays.value,
           minimumNoticeMinutes: minimumNoticeMinutes.value,
           bufferBeforeMinutes: bufferBeforeMinutes.value,
@@ -183,20 +206,15 @@ extension on ScheduleRules {
   );
 }
 
-RescheduleState _withException(RescheduleState state, DateTime date, List<ExceptionHoursRange> hours) {
-  final schedule = state.schedule;
+/// Changes the schedule with [scheduleId]. A schedule that was never created is left absent.
+RescheduleState _withSchedule(
+  RescheduleState state,
+  String scheduleId,
+  ScheduleRules Function(ScheduleRules schedule) change,
+) {
+  final schedule = state.schedules[scheduleId];
   if (schedule == null) return state;
-  return state.copyWith(
-    schedule: schedule.copyWith(dateExceptions: {...schedule.dateExceptions, _dayKey(date): hours}),
-  );
-}
-
-RescheduleState _withoutException(RescheduleState state, DateTime date) {
-  final schedule = state.schedule;
-  if (schedule == null) return state;
-  return state.copyWith(
-    schedule: schedule.copyWith(dateExceptions: {...schedule.dateExceptions}..remove(_dayKey(date))),
-  );
+  return state.copyWith(schedules: {...state.schedules, scheduleId: change(schedule)});
 }
 
 DateTime _dayKey(DateTime date) => DateTime.utc(date.year, date.month, date.day);

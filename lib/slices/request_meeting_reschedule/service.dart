@@ -32,12 +32,17 @@ final class RequestMeetingRescheduleService {
 
   Future<List<DomainEvent>> handle(RequestMeetingRescheduleInput input) async {
     for (var attempt = 1; ; attempt++) {
-      final hostId = await _hostOf(input.meetingId);
+      final reserved = await _reservedOf(input.meetingId);
       // A meeting without a reservation has no participants, so nobody may reschedule it.
-      if (hostId == null) throw const NotAParticipantError();
+      if (reserved == null) throw const NotAParticipantError();
+      // A meeting type is created before any of its meetings is reserved, so its schedule is always known.
+      final scheduleId = await _scheduleIdOf(reserved.meetingTypeId);
+      if (scheduleId == null) throw StateError('A reserved meeting has a meeting type with a schedule.');
       final command = RequestMeetingRescheduleCommand(
         meetingId: MeetingId(input.meetingId),
-        hostId: HostId(hostId),
+        hostId: HostId(reserved.hostId),
+        meetingTypeId: MeetingTypeId(reserved.meetingTypeId),
+        scheduleId: ScheduleId(scheduleId),
         requestedBy: RequestedBy(input.requestedBy),
         newSlotStart: input.newSlotStart,
         newSlotEnd: input.newSlotEnd,
@@ -53,15 +58,40 @@ final class RequestMeetingRescheduleService {
     }
   }
 
-  /// The host of the meeting, read from its `meeting_slot_reserved`, or null when the meeting was never reserved.
-  Future<String?> _hostOf(String meetingId) async {
+  /// The host and meeting type of the meeting, read from its `meeting_slot_reserved`, or null when the meeting was never
+  /// reserved.
+  Future<({String hostId, String meetingTypeId})?> _reservedOf(String meetingId) async {
     final read = await _eventStore.read([
       (tag: 'meetingId', value: meetingId, eventTypes: const [MeetingSlotReservedEvent]),
     ]);
     for (final stored in read.events) {
       final event = stored.event;
-      if (event is MeetingSlotReservedEvent) return event.hostId.value;
+      if (event is MeetingSlotReservedEvent) {
+        return (hostId: event.hostId.value, meetingTypeId: event.meetingTypeId.value);
+      }
     }
     return null;
+  }
+
+  /// The schedule of the meeting type, from its latest `meeting_type_created` or `meeting_type_edited`. A deleted meeting
+  /// type keeps its schedule, so the history is read whatever its state. Null when the meeting type was never created.
+  Future<String?> _scheduleIdOf(String meetingTypeId) async {
+    final read = await _eventStore.read([
+      (
+        tag: 'meetingTypeId',
+        value: meetingTypeId,
+        eventTypes: const [MeetingTypeCreatedEvent, MeetingTypeEditedEvent],
+      ),
+    ]);
+    String? scheduleId;
+    for (final stored in read.events) {
+      final event = stored.event;
+      if (event is MeetingTypeCreatedEvent) {
+        scheduleId = event.scheduleId.value;
+      } else if (event is MeetingTypeEditedEvent) {
+        scheduleId = event.scheduleId.value;
+      }
+    }
+    return scheduleId;
   }
 }

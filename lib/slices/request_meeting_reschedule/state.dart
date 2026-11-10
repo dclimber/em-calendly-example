@@ -24,11 +24,12 @@ final class ReschedulableBooking {
   final Duration duration;
 }
 
-/// The state that `request_meeting_reschedule` decides on, folded from the meeting's own events and the events of its
-/// host: the host's schedule, calendar status, busy times, and every held slot of the host's meetings.
+/// The state that `request_meeting_reschedule` decides on, folded from the meeting's own events, the events of its
+/// host, and the events of its meeting type's schedule: the schedule, calendar status, busy times, and every held slot
+/// of the host's meetings.
 final class RescheduleState {
   const RescheduleState({
-    this.schedule,
+    this.schedules = const {},
     this.calendarFailed = false,
     this.busy = const [],
     this.held = const {},
@@ -37,8 +38,9 @@ final class RescheduleState {
     this.calendarEventIds = const {},
   });
 
-  /// The availability rules of the host's schedule. Null until the schedule is created.
-  final ScheduleRules? schedule;
+  /// The availability rules by schedule id. The repository reads only the schedule of the command's meeting type, so
+  /// this holds that one schedule. A schedule is absent until it is created.
+  final Map<String, ScheduleRules> schedules;
   final bool calendarFailed;
   final List<SlotSpan> busy;
 
@@ -55,7 +57,7 @@ final class RescheduleState {
   final Map<String, String> calendarEventIds;
 
   RescheduleState copyWith({
-    ScheduleRules? schedule,
+    Map<String, ScheduleRules>? schedules,
     bool? calendarFailed,
     List<SlotSpan>? busy,
     Map<String, HeldSlot>? held,
@@ -63,7 +65,7 @@ final class RescheduleState {
     Map<String, MeetingLifecycleState>? lifecycles,
     Map<String, String>? calendarEventIds,
   }) => RescheduleState(
-    schedule: schedule ?? this.schedule,
+    schedules: schedules ?? this.schedules,
     calendarFailed: calendarFailed ?? this.calendarFailed,
     busy: busy ?? this.busy,
     held: held ?? this.held,

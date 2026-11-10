@@ -17,6 +17,15 @@ const _stranger = Viewer(employeeId: 'dave-employee-id', name: 'Dave Stranger', 
 
 /// Alice's schedule and calendar, and a meeting that Bob booked with her and that is confirmed.
 List<DomainEvent> _setup() => [
+  MeetingTypeCreatedEvent(
+    meetingTypeId: MeetingTypeId('mt-1'),
+    hostId: HostId('alice-employee-id'),
+    meetingTitle: MeetingTitle('30-minute consultation'),
+    durationMinutes: DurationMinutes(30),
+    meetingLocation: MeetingLocation('Video call'),
+    scheduleId: ScheduleId('sched-1'),
+    bookingUrl: BookingUrl('http://x/book/mt-1'),
+  ),
   CalendarConnectedEvent(hostId: HostId('alice-employee-id'), calendarAccount: CalendarAccount('alice@example.com')),
   AvailabilityScheduleCreatedEvent(
     scheduleId: ScheduleId('sched-1'),
