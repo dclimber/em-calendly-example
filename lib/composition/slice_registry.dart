@@ -28,6 +28,7 @@ import '../slices/booking_outcome/module.dart';
 import '../slices/send_booking_confirmation/module.dart';
 import '../slices/hosted_meetings/module.dart';
 import '../slices/my_booked_meetings/module.dart';
+import '../slices/meeting_details/module.dart';
 import 'vertical_slice.dart';
 
 /// Every slice of the model, in board order. Each new slice adds its import and its `module.dart` instance here.
@@ -62,4 +63,5 @@ const List<VerticalSlice> verticalSlices = [
   SendBookingConfirmationSlice(),
   HostedMeetingsSlice(),
   MyBookedMeetingsSlice(),
+  MeetingDetailsSlice(),
 ];
