@@ -53,6 +53,25 @@ void main() {
     expect(_completions(t), hasLength(1));
   });
 
+  // @requires a confirmed meeting whose reschedule to a later end is requested, then fails
+  // @ensures the job completes the meeting at its original end, not at the failed request's end
+  test('a meeting whose reschedule failed is completed at its original end', () async {
+    final t = TestApp(slices: const [CompleteFinishedMeetingSlice()]);
+    await t.start();
+    final requestedEnd = meetingEnd.add(const Duration(hours: 1));
+    await t.given([
+      reservedEvent(),
+      confirmedEvent(),
+      rescheduleRequestedEvent(newSlotEnd: requestedEnd),
+      rescheduleFailedEvent(),
+    ]);
+    await t.drain();
+
+    t.clock.set(meetingEnd);
+    await t.runJobs();
+    expect(_completions(t), hasLength(1));
+  });
+
   // @requires a canceled meeting whose end has passed
   // @ensures the job completes nothing: the item left the list at cancellation
   test('a canceled meeting is not completed', () async {

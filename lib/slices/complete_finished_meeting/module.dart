@@ -30,6 +30,10 @@ final class CompleteFinishedMeetingSlice implements VerticalSlice {
             MeetingConfirmedEvent,
             MeetingRescheduleRequestedEvent,
             MeetingRescheduledEvent,
+
+            /// Needed to drop a failed request's end. The model's `from` list omits it, so the subscription must name it.
+            /// Without it a failed reschedule would keep the end it requested.
+            MeetingRescheduleFailedEvent,
             MeetingMovedInCalendarEvent,
             MeetingCanceledEvent,
             MeetingCompletedEvent,
