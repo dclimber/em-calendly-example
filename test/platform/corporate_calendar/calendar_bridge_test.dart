@@ -1,3 +1,4 @@
+import 'package:em_calendly_example/bounded_contexts/corporate_sso/api.dart';
 import 'package:em_calendly_example/bounded_contexts/corporate_calendar/api.dart';
 import 'package:em_calendly_example/bounded_contexts/employee_directory/api.dart';
 import 'package:em_calendly_example/bounded_contexts/host_setup/api.dart';
@@ -69,6 +70,19 @@ void main() {
     // @ensures an unchanged free/busy answer is not reported again
     await t.runJobs();
     expect(appended<FreeBusyReportedEvent>(), hasLength(1));
+  });
+
+  // @requires the host connects right after the first sign-in, before employee_registered is recorded
+  // @ensures the connection uses the work email of the corporate sign-in
+  test('connects a host whose registration is still on its way', () async {
+    await t.given([
+      const CorporateSignInSucceededEvent(ssoSubject: 'carol-id', displayName: 'Carol', workEmail: 'carol@example.com'),
+      CalendarConnectionStartedEvent(hostId: HostId('carol-id')),
+    ]);
+    await t.drain();
+    expect(appended<CalendarAccessGrantedEvent>(), [
+      CalendarAccessGrantedEvent(schedulerUserRef: SchedulerUserRef('carol-id'), calendarAccount: 'carol@example.com'),
+    ]);
   });
 
   // @ensures a refused connection is answered with calendar_access_failed and its code

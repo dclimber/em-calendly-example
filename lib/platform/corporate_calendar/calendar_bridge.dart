@@ -1,6 +1,7 @@
 import 'package:logging/logging.dart';
 
 import '../../bounded_contexts/corporate_calendar/api.dart';
+import '../../bounded_contexts/corporate_sso/api.dart';
 import '../../bounded_contexts/employee_directory/api.dart';
 import '../../bounded_contexts/host_setup/api.dart';
 import '../../bounded_contexts/meetings/api.dart';
@@ -90,13 +91,22 @@ final class CalendarBridge {
     }
   }
 
+  /// The calendar of [employeeId]: the work email of `employee_registered`, or, while that registration is still on
+  /// its way, of the corporate sign-in that it comes from (the SSO subject is the employee id).
   Future<CalendarUser?> _employee(String employeeId) async {
     final read = await _store.read([
       (tag: 'employeeId', value: employeeId, eventTypes: [EmployeeRegisteredEvent]),
+      (tag: 'ssoSubject', value: employeeId, eventTypes: [CorporateSignInSucceededEvent]),
     ]);
-    if (read.events.isEmpty) return null;
-    final registered = read.events.last.event as EmployeeRegisteredEvent;
-    return (employeeId: employeeId, email: registered.employeeEmail.value);
+    for (final stored in read.events.reversed) {
+      switch (stored.event) {
+        case EmployeeRegisteredEvent(:final employeeEmail):
+          return (employeeId: employeeId, email: employeeEmail.value);
+        case CorporateSignInSucceededEvent(:final workEmail):
+          return (employeeId: employeeId, email: workEmail);
+      }
+    }
+    return null;
   }
 
   Future<void> _connect(String hostId) async {
