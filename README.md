@@ -1,7 +1,8 @@
 # Internal meeting scheduler
 
 A self-service meeting scheduler for employees, built from the Event Modeling HCL model
-[`docs/internal-meeting-scheduler.em.hcl`](docs/internal-meeting-scheduler.em.hcl) with:
+[`docs/internal-meeting-scheduler.em.hcl`](docs/internal-meeting-scheduler.em.hcl)
+([diagram](https://dclimber.github.io/em-calendly-example/), rendered with `emhcl diagram` on every model change) with:
 
 - [fmodel-dart](https://pub.dev/packages/fmodel): deciders, views, and sagas.
 - [fstore-sql](https://github.com/fraktalio/fstore-sql): Postgres as event store and event stream.

@@ -1,0 +1,63 @@
+# Publishes the event model as an interactive diagram on GitHub Pages.
+# Repository settings: Pages → Build and deployment → Source: "GitHub Actions".
+name: Event model diagram
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**.em.hcl'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push replaces a queued one, a running one finishes.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  EMHCL_VERSION: v0.17.0
+  MODEL: docs/internal-meeting-scheduler.em.hcl
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Install emhcl
+        run: go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@${EMHCL_VERSION}
+
+      - name: Validate the model
+        run: emhcl validate "$MODEL"
+
+      - name: Render the diagram
+        run: |
+          mkdir -p site
+          emhcl diagram "$MODEL" -o site/index.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
