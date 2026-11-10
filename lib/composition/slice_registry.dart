@@ -40,6 +40,7 @@ import '../slices/send_reschedule_notice/module.dart';
 import '../slices/request_meeting_cancellation/module.dart';
 import '../slices/request_calendar_event_deletion/module.dart';
 import '../slices/complete_meeting_cancellation/module.dart';
+import '../slices/fail_meeting_cancellation/module.dart';
 import 'vertical_slice.dart';
 
 /// Every slice of the model, in board order. Each new slice adds its import and its `module.dart` instance here.
@@ -86,4 +87,5 @@ const List<VerticalSlice> verticalSlices = [
   RequestMeetingCancellationSlice(),
   RequestCalendarEventDeletionSlice(),
   CompleteMeetingCancellationSlice(),
+  FailMeetingCancellationSlice(),
 ];
