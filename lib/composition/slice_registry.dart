@@ -1,4 +1,5 @@
 import '../slices/record_calendar_connected/module.dart';
+import '../slices/fail_booking/module.dart';
 import '../slices/available_slots/module.dart';
 import '../slices/reserve_meeting_slot/module.dart';
 import '../slices/request_booking_availability_check/module.dart';
@@ -52,4 +53,5 @@ const List<VerticalSlice> verticalSlices = [
   VerifyBookedSlotSlice(),
   RequestCalendarEventSlice(),
   ConfirmBookedMeetingSlice(),
+  FailBookingSlice(),
 ];
