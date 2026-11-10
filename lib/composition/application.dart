@@ -7,6 +7,7 @@ import 'package:logging/logging.dart';
 import 'package:shelf_router/shelf_router.dart';
 
 import '../bounded_contexts/corporate_sso/api.dart';
+import '../landing/landing_page.dart';
 import '../platform/auth/authenticator.dart';
 import '../platform/corporate_calendar/calendar_bridge.dart';
 import '../platform/corporate_calendar/mock_corporate_calendar.dart';
@@ -150,6 +151,7 @@ final class Application {
     request = request.change(context: {_renderKey: render});
     try {
       final path = request.requestedUri.path;
+      if (path != appRoot && !path.startsWith('$appRoot/')) return await _handlePublic(request, path);
       if (path == signInRoute || path == signUpRoute) return await _handleAuthPage(request, path);
       if (path == signOutRoute && request.method == 'POST') return await _signOut(request);
 
@@ -165,6 +167,25 @@ final class Application {
       _log.severe('${request.method} ${request.requestedUri} failed', error, stackTrace);
       return Response.internalServerError(body: 'Something went wrong. The error is logged.');
     }
+  }
+
+  /// The requests outside [appRoot]: the landing page, which needs no session, and a not-found page otherwise.
+  FutureOr<Response> _handlePublic(Request request, String path) {
+    if (path != landingRoute || request.method != 'GET') return _render(request, 'Not found', const NotFoundPage());
+    final render = request.context[_renderKey] as RenderDocument;
+    return render(
+      Document(
+        title: 'Meeting Scheduler · an app built from an event model',
+        base: '/',
+        meta: {
+          'description':
+              'A meeting booking tool for employees, written from an Event Modeling HCL model with fmodel-dart, '
+              'fstore-sql, Supabase, and Jaspr.',
+        },
+        head: [link(rel: 'stylesheet', href: '/styles.css')],
+        body: const LandingPage(),
+      ),
+    );
   }
 
   Future<Response> _handleAuthPage(Request request, String path) async {

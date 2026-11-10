@@ -4,6 +4,7 @@ import 'package:shelf/shelf.dart';
 import '../platform/event_streaming/event_subscription.dart';
 import '../platform/jobs/job_scheduler.dart';
 import '../platform/web/http.dart';
+import '../ui/paths.dart';
 import 'app_services.dart';
 
 /// One slice of the model. Its `module.dart` exposes one const instance, and `slice_registry.dart` lists it.
@@ -56,6 +57,7 @@ final class SliceRegistrar {
   final Set<String> _paths = {};
 
   void _claim(String method, String path) {
+    if (!path.startsWith('$appRoot/')) throw ArgumentError.value(path, 'path', 'Slice routes live under $appRoot/');
     if (!_paths.add('$method $path')) throw StateError('Route $method $path is registered twice');
   }
 

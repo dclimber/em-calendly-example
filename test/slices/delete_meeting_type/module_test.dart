@@ -13,7 +13,7 @@ final _created = MeetingTypeCreatedEvent(
   durationMinutes: DurationMinutes(30),
   meetingLocation: MeetingLocation('Room 4'),
   scheduleId: ScheduleId('schedule-1'),
-  bookingUrl: BookingUrl('http://scheduler.test/book/meeting-type-1'),
+  bookingUrl: BookingUrl('http://scheduler.test/app/book/meeting-type-1'),
 );
 final _deleted = MeetingTypeDeletedEvent(meetingTypeId: MeetingTypeId('meeting-type-1'));
 final _path = deleteMeetingType('meeting-type-1');

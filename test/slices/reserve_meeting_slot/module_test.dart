@@ -79,7 +79,7 @@ void main() {
         ('Alice Example', 'host'),
         ('Bob Booker', 'booker'),
       ]);
-      expect(response.location, startsWith('/bookings/'));
+      expect(response.location, startsWith('/app/bookings/'));
       expect(response.location, contains(Uri.encodeQueryComponent('Your booking is being confirmed.')));
     },
   );
@@ -107,7 +107,7 @@ void main() {
     final response = await _book(t, start: _slotStart, end: _slotEnd, as: _carol);
 
     expect(response.statusCode, 303);
-    expect(response.location, startsWith('/bookings/'));
+    expect(response.location, startsWith('/app/bookings/'));
     expect(await _reservations(t), hasLength(2));
   });
 
@@ -157,7 +157,7 @@ void main() {
   test('an unauthenticated post is refused and nothing is appended', () async {
     final response = await _book(t, start: _slotStart, end: _slotEnd, as: null);
 
-    expect(response.location, isNot(startsWith('/bookings/')));
+    expect(response.location, isNot(startsWith('/app/bookings/')));
     expect(await _reservations(t), isEmpty);
   });
 }

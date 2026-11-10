@@ -10,6 +10,10 @@ MODEL    := docs/internal-meeting-scheduler.em.hcl
 EMHCL_VERSION := v0.17.0
 EMHCL         := .tools/emhcl-$(EMHCL_VERSION)
 
+# The landing page shows the model: an interactive diagram in web/ (not committed) and a summary in Dart.
+DIAGRAM       := web/event-model.html
+MODEL_SUMMARY := lib/landing/event_model.g.dart
+
 # Supabase runs on Docker. Without a Docker daemon, use the rootless podman socket when it exists.
 ifeq ($(wildcard /var/run/docker.sock),)
 PODMAN_SOCKET := /run/user/$(shell id -u)/podman/podman.sock
@@ -18,7 +22,7 @@ export DOCKER_HOST ?= unix://$(PODMAN_SOCKET)
 endif
 endif
 
-.PHONY: help deps format format-check analyze test test-db model-check build gate serve db-up db-down db-reset clean
+.PHONY: help deps format format-check analyze test test-db model-check event-model build gate serve db-up db-down db-reset clean
 
 help: ## List the targets
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -46,15 +50,22 @@ $(EMHCL):
 	GOBIN=$(CURDIR)/.tools go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@$(EMHCL_VERSION)
 	mv .tools/emhcl $(EMHCL)
 
-model-check: $(EMHCL) ## Validate the event model
-	$(EMHCL) validate $(MODEL)
+$(DIAGRAM): $(MODEL) $(EMHCL)
+	$(EMHCL) diagram --title "Internal meeting scheduler" $(MODEL) -o $(DIAGRAM)
 
-build: ## Compile the server and the client with Jaspr
+event-model: $(DIAGRAM) ## Render the model diagram and regenerate the model summary of the landing page
+	$(DART) run tool/generate_event_model.dart $(DIAGRAM) $(MODEL) $(MODEL_SUMMARY)
+
+model-check: $(EMHCL) $(DIAGRAM) ## Validate the event model; fail when the landing page summary is out of date
+	$(EMHCL) validate $(MODEL)
+	$(DART) run tool/generate_event_model.dart $(DIAGRAM) $(MODEL) $(MODEL_SUMMARY) --check
+
+build: $(DIAGRAM) ## Compile the server and the client with Jaspr
 	$(JASPR) build
 
 gate: deps format-check analyze model-check test test-db build ## Every check that must pass before a commit
 
-serve: db-up ## Run the development server on http://localhost:8080
+serve: db-up $(DIAGRAM) ## Run the development server on http://localhost:8080
 	$(JASPR) serve
 
 db-up: ## Start the local Supabase stack and apply the migrations

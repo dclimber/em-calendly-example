@@ -34,3 +34,6 @@ migrate_working_dir/
 
 # Local environment
 .env
+
+# Rendered by `make event-model` from the model
+/web/event-model.html

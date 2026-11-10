@@ -15,7 +15,7 @@ final _command = CreateMeetingTypeCommand(
   durationMinutes: DurationMinutes(30),
   meetingLocation: MeetingLocation('Room 4'),
   scheduleId: _schedule,
-  bookingUrl: BookingUrl('http://scheduler.test/book/meeting-type-1'),
+  bookingUrl: BookingUrl('http://scheduler.test/app/book/meeting-type-1'),
 );
 final _scheduleCreated = AvailabilityScheduleCreatedEvent(
   scheduleId: _schedule,
@@ -30,7 +30,7 @@ final _created = MeetingTypeCreatedEvent(
   durationMinutes: DurationMinutes(30),
   meetingLocation: MeetingLocation('Room 4'),
   scheduleId: _schedule,
-  bookingUrl: BookingUrl('http://scheduler.test/book/meeting-type-1'),
+  bookingUrl: BookingUrl('http://scheduler.test/app/book/meeting-type-1'),
 );
 
 CreateMeetingTypeState _foldHistory(List<HostSetupEvent> history) =>

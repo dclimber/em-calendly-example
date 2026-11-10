@@ -93,7 +93,7 @@ void main() {
     final response = await t.get(bookingPage('mt-1'), as: bob);
 
     expect(response.body, contains('This meeting type is not accepting bookings.'));
-    expect(response.body, isNot(contains('/book/mt-1/review')));
+    expect(response.body, isNot(contains('/app/book/mt-1/review')));
   });
 
   test('reschedule picker: a participant sees confirm links; a stranger sees the denial', () async {
@@ -102,10 +102,10 @@ void main() {
 
     final participant = await t.get(rescheduleSlotPicker('meeting-1'), as: bob);
     expect(participant.statusCode, 200);
-    expect(participant.body, contains('/meetings/meeting-1/reschedule/confirm'));
+    expect(participant.body, contains('/app/meetings/meeting-1/reschedule/confirm'));
 
     final stranger = await t.get(rescheduleSlotPicker('meeting-1'), as: _carol);
     expect(stranger.body, contains('Only the participants of this meeting can move it.'));
-    expect(stranger.body, isNot(contains('/meetings/meeting-1/reschedule/confirm')));
+    expect(stranger.body, isNot(contains('/app/meetings/meeting-1/reschedule/confirm')));
   });
 }

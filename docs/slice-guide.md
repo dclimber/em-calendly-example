@@ -20,7 +20,7 @@ Read these first, in this order:
 | `lib/bounded_contexts/<context>/` | Events, value objects, lifecycles, tags, codecs (import `api.dart`) | No |
 | `lib/platform/` | Event store, streaming, view store, auth, mail, clock, calendar integration | No |
 | `lib/composition/` | `VerticalSlice`, `SliceRegistrar`, `AppServices`, `Application` | Only `slice_registry.dart` |
-| `lib/ui/` | `paths.dart` (URL of every screen), `kit.dart` (UI blocks), `format.dart`, `LocalTime` | No |
+| `lib/ui/` | `paths.dart` (URL of every screen, all under `/app`), `kit.dart` (UI blocks), `format.dart`, `LocalTime` | No |
 | `test/support/` | `TestApp`, `alice`, `bob`, `sample<Context>Events()` | Add helpers only if 2+ slices need them |
 
 If you believe the framework itself is wrong, stop and report it. Do not work around it in the slice.
@@ -246,6 +246,8 @@ Tell the person what is happening ("Your booking is being confirmed") instead of
   and `LocalTime(iso: instant.toUtc().toIso8601String())` for every instant a person reads.
 - Text: `.text('...')`. Children lists go last. No inline styles; the classes of `web/styles.css` are enough.
 - Read `request.param('name')` for path parameters and `request.query[...]` for query parameters.
+- Every route of a slice starts with `/app/`. Use the constants of `paths.dart`. `SliceRegistrar` refuses any other
+  path, because the sign-in check applies only under `/app`. The path `/` is the public landing page.
 - Only participants may manage a meeting (`actor.meeting_participant`): check the viewer against the read model
   and show an error (or redirect with `errorRedirect`) for anyone else.
 
