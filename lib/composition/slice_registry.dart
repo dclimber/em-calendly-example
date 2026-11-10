@@ -2,6 +2,7 @@ import '../slices/record_calendar_connected/module.dart';
 import '../slices/available_slots/module.dart';
 import '../slices/reserve_meeting_slot/module.dart';
 import '../slices/request_booking_availability_check/module.dart';
+import '../slices/verify_booked_slot/module.dart';
 import '../slices/calendar_connection_status/module.dart';
 import '../slices/record_host_busy_times/module.dart';
 import '../slices/create_availability_schedule/module.dart';
@@ -46,4 +47,5 @@ const List<VerticalSlice> verticalSlices = [
   AvailableSlotsSlice(),
   ReserveMeetingSlotSlice(),
   RequestBookingAvailabilityCheckSlice(),
+  VerifyBookedSlotSlice(),
 ];
